@@ -106,13 +106,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                         })}
                     </nav>
 
-                    {/* Footer */}
-                    <div className="px-4 py-4 border-t border-slate-700/50">
-                        <div className="bg-slate-800/50 rounded-lg p-3">
-                            <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Program Rujuk Balik</p>
-                            <p className="text-xs text-slate-400 mt-1">BPJS Kesehatan</p>
-                        </div>
-                    </div>
+
                 </div>
             </aside>
 

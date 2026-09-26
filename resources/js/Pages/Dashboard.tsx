@@ -92,7 +92,7 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
         {
             title: 'Dalam Toleransi',
             value: statistik.dalam_toleransi,
-            subtitle: 'Rentang H s.d. H+7',
+            subtitle: 'Rentang H-3 s.d. H+3',
             icon: Clock,
             gradient: 'from-amber-500 to-amber-600',
             shadowColor: 'shadow-amber-500/25',
@@ -209,23 +209,23 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                     )}
                 </motion.div>
 
-                {/* Bar Chart: Per Diagnosis */}
+                {/* Bar Chart: Per FKTP */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 0.4 }}
                     className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 lg:col-span-2"
                 >
-                    <h3 className="text-sm font-semibold text-slate-700 mb-4">Kepatuhan per Diagnosis PRB</h3>
-                    {statistik.per_diagnosis.length > 0 ? (
+                    <h3 className="text-sm font-semibold text-slate-700 mb-4">Kepatuhan per FKTP Perujuk</h3>
+                    {statistik.per_fktp.length > 0 ? (
                         <ResponsiveContainer width="100%" height={260}>
-                            <BarChart data={statistik.per_diagnosis} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                            <BarChart data={statistik.per_fktp} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                 <XAxis
-                                    dataKey="diagnosis"
-                                    tick={{ fontSize: 10, fill: '#64748b' }}
+                                    dataKey="fktp"
+                                    tick={{ fontSize: 11, fill: '#64748b' }}
                                     interval={0}
-                                    angle={-25}
+                                    angle={-15}
                                     textAnchor="end"
                                     height={60}
                                 />
@@ -233,8 +233,8 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                                 <Tooltip
                                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }}
                                 />
-                                <Bar dataKey="patuh" name="Patuh" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="tidak_patuh" name="Tidak Patuh" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="patuh" name="Patuh" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="tidak_patuh" name="Tidak Patuh" fill="#f97316" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -244,37 +244,6 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                     )}
                 </motion.div>
             </div>
-
-            {/* Bar Chart: Per FKTP */}
-            {statistik.per_fktp.length > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: 0.5 }}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-8"
-                >
-                    <h3 className="text-sm font-semibold text-slate-700 mb-4">Kepatuhan per FKTP Perujuk</h3>
-                    <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={statistik.per_fktp} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                            <XAxis
-                                dataKey="fktp"
-                                tick={{ fontSize: 11, fill: '#64748b' }}
-                                interval={0}
-                                angle={-15}
-                                textAnchor="end"
-                                height={60}
-                            />
-                            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                            <Tooltip
-                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }}
-                            />
-                            <Bar dataKey="patuh" name="Patuh" fill="#14b8a6" radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="tidak_patuh" name="Tidak Patuh" fill="#f97316" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </motion.div>
-            )}
 
             {/* Overdue Patient Alert Table */}
             {statistik.tidak_patuh > 0 && (

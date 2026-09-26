@@ -46,12 +46,12 @@ export function getWhatsAppTemplate(ctx: WhatsAppContext): string {
         return `Yth. Bpk/Ibu ${nama},\n\n*HARI INI (${jadwalFormatted})* adalah jadwal pengambilan obat PRB Anda.\n\nSilakan segera datang ke apotek mitra kami untuk mengambil obat rutin Anda.\n\nJangan lupa membawa:\n📋 Kartu BPJS\n📋 Surat Rujuk Balik (SRB)\n\nTerima kasih. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
     }
 
-    // H+1 s.d. H+7 (dalam toleransi)
-    if (selisih >= 1 && selisih <= 7) {
-        return `Yth. Bpk/Ibu ${nama},\n\nJadwal pengambilan obat PRB Anda sudah lewat *${selisih} hari* (jadwal: ${jadwalFormatted}).\n\n⚠️ Anda masih dalam *batas toleransi* (maks. 7 hari). Mohon segera datang ke apotek kami untuk mengambil obat.\n\nKepatuhan minum obat sangat penting untuk pengendalian kondisi kesehatan Anda.\n\nTerima kasih. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
+    // H+1 s.d. H+3 (dalam toleransi)
+    if (selisih >= 1 && selisih <= 3) {
+        return `Yth. Bpk/Ibu ${nama},\n\nJadwal pengambilan obat PRB Anda sudah lewat *${selisih} hari* (jadwal: ${jadwalFormatted}).\n\n⚠️ Anda masih dalam *batas toleransi* (maks. 3 hari). Mohon segera datang ke apotek kami untuk mengambil obat.\n\nKepatuhan minum obat sangat penting untuk pengendalian kondisi kesehatan Anda.\n\nTerima kasih. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
     }
 
-    // Lewat H+7 (overdue / tidak patuh)
+    // Lewat H+3 (overdue / tidak patuh)
     return `Yth. Bpk/Ibu ${nama},\n\n🔴 Pengambilan obat PRB Anda sudah *terlambat ${selisih} hari* dari jadwal (${jadwalFormatted}).\n\nKami sangat mengimbau Anda untuk:\n1️⃣ Segera datang ke apotek untuk mengambil obat\n2️⃣ Atau menghubungi *${fktp}* untuk konsultasi lebih lanjut\n\nKepatuhan pengobatan kronis sangat penting untuk mencegah komplikasi.\n\nMohon hubungi kami jika ada kendala. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
 }
 

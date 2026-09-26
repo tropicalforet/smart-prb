@@ -5,7 +5,7 @@ export interface PasienPRB {
     no_kartu_bpjs: string;
     no_whatsapp: string | null;
     fktp_asal: string;
-    diagnosis_prb: DiagnosisPRB;
+    diagnosis_prb: DiagnosisPRB[];
     tanggal_mulai_prb: string;
     tanggal_pengambilan_terakhir: string | null;
     tanggal_jadwal_berikutnya: string | null;
@@ -21,6 +21,8 @@ export interface PasienPRB {
     status_kepatuhan?: StatusKepatuhan;
     selisih_hari_evaluasi?: number;
     keterangan_kepatuhan?: string;
+    early_warning?: string;
+    jadwal_target_aktif?: string;
     // Relations
     riwayat_pengambilan_obat?: RiwayatPengambilanObat[];
     riwayat_tindak_lanjut?: RiwayatTindakLanjut[];
@@ -44,7 +46,8 @@ export type StatusKepatuhan =
     | 'Dalam Toleransi'
     | 'Belum Jatuh Tempo'
     | 'Belum Ada Jadwal'
-    | 'Pasif';
+    | 'Pasif'
+    | '—';
 
 export type TindakanFollowUp =
     | 'Sudah mengambil obat'
@@ -65,10 +68,12 @@ export type AlasanPasif =
 export interface RiwayatPengambilanObat {
     id: string;
     pasien_prb_id: string;
+    no_faktur?: string | null;
+    tanggal_berobat?: string | null;
     tanggal_pengambilan: string;
     jadwal_target: string;
     selisih_hari: number;
-    status_kepatuhan: 'Patuh' | 'Terlambat';
+    status_kepatuhan: string;
     created_at: string;
 }
 
@@ -124,6 +129,7 @@ export interface Filters {
     filter_status: string;
     filter_kepatuhan: string;
     filter_diagnosis: string;
+    filter_fktp?: string;
 }
 
 // Constants
@@ -165,4 +171,5 @@ export const STATUS_KEPATUHAN_CONFIG: Record<StatusKepatuhan, { color: string; b
     'Belum Jatuh Tempo': { color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: '📅' },
     'Belum Ada Jadwal': { color: 'text-slate-500', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', icon: '—' },
     'Pasif': { color: 'text-slate-500', bgColor: 'bg-slate-100', borderColor: 'border-slate-200', icon: '⏸' },
+    '—': { color: 'text-slate-500', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', icon: '—' },
 };

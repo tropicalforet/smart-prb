@@ -29,6 +29,7 @@ class DashboardController extends Controller
                     'status_kepatuhan' => $kepatuhan['status'],
                     'selisih_hari_evaluasi' => $kepatuhan['selisih_hari'],
                     'keterangan_kepatuhan' => $kepatuhan['keterangan'],
+                    'early_warning' => $kepatuhan['early_warning'] ?? '-',
                 ]);
             });
 

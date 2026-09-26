@@ -15,6 +15,8 @@ class RiwayatPengambilanObat extends Model
 
     protected $fillable = [
         'pasien_prb_id',
+        'no_faktur',
+        'tanggal_berobat',
         'tanggal_pengambilan',
         'jadwal_target',
         'selisih_hari',
@@ -22,6 +24,7 @@ class RiwayatPengambilanObat extends Model
     ];
 
     protected $casts = [
+        'tanggal_berobat' => 'date',
         'tanggal_pengambilan' => 'date',
         'jadwal_target' => 'date',
         'selisih_hari' => 'integer',

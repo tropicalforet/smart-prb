@@ -15,6 +15,7 @@ Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']
 Route::post('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasi'])->name('pasien.realisasi');
 Route::post('pasien/{pasien}/status', [PasienPrbController::class, 'updateStatus'])->name('pasien.status');
 Route::post('pasien/import/batch', [PasienPrbController::class, 'import'])->name('pasien.import');
+Route::post('pasien/hapus-massal', [PasienPrbController::class, 'destroyBulk'])->name('pasien.destroy-bulk');
 Route::get('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export');
 
 // Tindak Lanjut

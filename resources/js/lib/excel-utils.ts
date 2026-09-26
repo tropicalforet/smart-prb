@@ -2,16 +2,16 @@ import * as XLSX from 'xlsx';
 import { PasienPRB, DIAGNOSIS_OPTIONS } from '@/types';
 
 export interface ImportRow {
+    no_faktur?: string;
+    kode_pasien?: string;
     nama_pasien: string;
     no_kartu_bpjs: string;
     no_whatsapp?: string;
     fktp_asal: string;
-    diagnosis_prb: string;
+    diagnosis_prb: string[];
     tanggal_mulai_prb: string;
+    tanggal_berobat?: string;
     tanggal_pengambilan_terakhir?: string;
-    jatah_obat?: number;
-    kode_pasien?: string;
-    status?: string;
 }
 
 export interface ValidationResult {
@@ -22,63 +22,265 @@ export interface ValidationResult {
 }
 
 /**
- * Parse file Excel menjadi array JSON.
+ * =========================================================
+ * PARSE FILE EXCEL
+ * =========================================================
  */
-export function parseExcelFile(file: File): Promise<Record<string, any>[]> {
+export function parseExcelFile(
+    file: File
+): Promise<Record<string, any>[]> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
+
         reader.onload = (e) => {
             try {
-                const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-                const sheetName = workbook.SheetNames[0];
-                const sheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(sheet);
+                const data = new Uint8Array(
+                    e.target?.result as ArrayBuffer
+                );
+
+                const workbook = XLSX.read(data, {
+                    type: 'array',
+                    cellDates: true,
+                });
+
+                const sheetName =
+                    workbook.SheetNames[0];
+
+                const sheet =
+                    workbook.Sheets[sheetName];
+
+                const jsonData =
+                    XLSX.utils.sheet_to_json(sheet, {
+                        defval: '',
+                    });
+
                 resolve(jsonData);
             } catch (err) {
-                reject(new Error('Gagal membaca file Excel. Pastikan format file benar.'));
+                reject(
+                    new Error(
+                        'Gagal membaca file Excel. Pastikan format file benar.'
+                    )
+                );
             }
         };
-        reader.onerror = () => reject(new Error('Gagal membaca file.'));
+
+        reader.onerror = () =>
+            reject(
+                new Error(
+                    'Gagal membaca file.'
+                )
+            );
+
         reader.readAsArrayBuffer(file);
     });
 }
 
 /**
- * Validasi per baris data import.
+ * =========================================================
+ * VALIDASI DATA IMPORT
+ * =========================================================
  */
-export function validateImportData(rows: Record<string, any>[]): ValidationResult[] {
+export function validateImportData(
+    rows: Record<string, any>[]
+): ValidationResult[] {
     return rows.map((row, idx) => {
         const errors: string[] = [];
 
+        const tanggalMulai =
+            formatDateValue(
+                row['Tanggal Mulai PRB'] ??
+                    row['tanggal_mulai_prb']
+            );
+
+        const tanggalTerakhir =
+            formatDateValue(
+                row['Tanggal Pengambilan'] ??
+                    row['tanggal_pengambilan'] ??
+                    row['Pengambilan Terakhir'] ??
+                    row['tanggal_pengambilan_terakhir']
+            );
+
+        const noFaktur =
+            String(
+                row['No. Faktur / No. Transaksi Apotek'] ??
+                    row['No. Faktur'] ??
+                    row['No. Transaksi'] ??
+                    row['No. Faktur / No. Transaksi'] ??
+                    row['no_faktur'] ??
+                    row['no_transaksi'] ??
+                    ''
+            ).trim() || undefined;
+
+        const tanggalBerobat =
+            formatDateValue(
+                row['Tanggal Berobat'] ??
+                    row['tanggal_berobat']
+            ) || undefined;
+
         const mapped: ImportRow = {
-            nama_pasien: String(row['Nama Pasien'] || row['nama_pasien'] || '').trim(),
-            no_kartu_bpjs: String(row['No. Kartu BPJS'] || row['no_kartu_bpjs'] || '').trim(),
-            no_whatsapp: String(row['No. WhatsApp'] || row['no_whatsapp'] || '').trim() || undefined,
-            fktp_asal: String(row['FKTP Asal'] || row['fktp_asal'] || '').trim(),
-            diagnosis_prb: String(row['Diagnosis PRB'] || row['diagnosis_prb'] || '').trim(),
-            tanggal_mulai_prb: formatDateValue(row['Tanggal Mulai PRB'] || row['tanggal_mulai_prb']),
-            tanggal_pengambilan_terakhir: formatDateValue(row['Pengambilan Terakhir'] || row['tanggal_pengambilan_terakhir']) || undefined,
-            jatah_obat: parseInt(String(row['Jatah Obat (Hari)'] || row['jatah_obat'] || '30')) || 30,
-            kode_pasien: String(row['Kode Pasien'] || row['kode_pasien'] || '').trim() || undefined,
-            status: String(row['Status'] || row['status'] || 'Aktif').trim(),
+            no_faktur: noFaktur,
+
+            kode_pasien:
+                String(
+                    row['Kode Pasien'] ??
+                        row['kode_pasien'] ??
+                        ''
+                ).trim() || undefined,
+
+            nama_pasien:
+                String(
+                    row['Nama Pasien'] ??
+                        row['nama_pasien'] ??
+                        ''
+                ).trim(),
+
+            no_kartu_bpjs:
+                String(
+                    row['No. Kartu BPJS'] ??
+                        row['no_kartu_bpjs'] ??
+                        ''
+                ).trim(),
+
+            no_whatsapp:
+                String(
+                    row['No. WhatsApp'] ??
+                        row['no_whatsapp'] ??
+                        ''
+                ).trim() || undefined,
+
+            fktp_asal:
+                String(
+                    row['FKTP Asal'] ??
+                        row['fktp_asal'] ??
+                        ''
+                ).trim(),
+
+            diagnosis_prb:
+                String(
+                    row['Diagnosis PRB'] ??
+                        row['diagnosis_prb'] ??
+                        ''
+                ).split(',').map(d => d.trim()).filter(Boolean),
+
+            tanggal_mulai_prb:
+                tanggalMulai,
+
+            tanggal_berobat:
+                tanggalBerobat,
+
+            tanggal_pengambilan_terakhir:
+                tanggalTerakhir ||
+                undefined,
         };
 
-        // Validasi field wajib
-        if (!mapped.nama_pasien) errors.push('Nama Pasien wajib diisi');
-        if (!mapped.no_kartu_bpjs) errors.push('No. Kartu BPJS wajib diisi');
-        if (!mapped.fktp_asal) errors.push('FKTP Asal wajib diisi');
-        if (!mapped.diagnosis_prb) errors.push('Diagnosis PRB wajib diisi');
-        if (!mapped.tanggal_mulai_prb) errors.push('Tanggal Mulai PRB wajib diisi atau format tidak valid');
+        /*
+         * =====================================================
+         * FIELD WAJIB
+         * =====================================================
+         */
 
-        // Validasi diagnosis
-        if (mapped.diagnosis_prb && !DIAGNOSIS_OPTIONS.includes(mapped.diagnosis_prb as any)) {
-            errors.push(`Diagnosis "${mapped.diagnosis_prb}" tidak valid. Pilihan: ${DIAGNOSIS_OPTIONS.join(', ')}`);
+        if (!mapped.nama_pasien) {
+            errors.push(
+                'Nama Pasien wajib diisi'
+            );
         }
 
-        // Validasi tanggal
-        if (mapped.tanggal_mulai_prb && isNaN(Date.parse(mapped.tanggal_mulai_prb))) {
-            errors.push('Format tanggal mulai PRB tidak valid (gunakan YYYY-MM-DD)');
+        if (!mapped.no_kartu_bpjs) {
+            errors.push(
+                'No. Kartu BPJS wajib diisi'
+            );
+        }
+
+        if (!mapped.fktp_asal) {
+            errors.push(
+                'FKTP Asal wajib diisi'
+            );
+        }
+
+        if (!mapped.diagnosis_prb || mapped.diagnosis_prb.length === 0) {
+            errors.push(
+                'Diagnosis PRB wajib diisi'
+            );
+        }
+
+        if (!mapped.tanggal_mulai_prb) {
+            errors.push(
+                'Tanggal Mulai PRB wajib diisi'
+            );
+        }
+
+        /*
+         * =====================================================
+         * VALIDASI DIAGNOSIS
+         * =====================================================
+         */
+
+        if (mapped.diagnosis_prb && mapped.diagnosis_prb.length > 0) {
+            const invalidDiagnoses = mapped.diagnosis_prb.filter(d => !DIAGNOSIS_OPTIONS.includes(d as any));
+            if (invalidDiagnoses.length > 0) {
+                errors.push(
+                    `Diagnosis "${invalidDiagnoses.join(', ')}" tidak valid. Pilihan: ${DIAGNOSIS_OPTIONS.join(', ')}`
+                );
+            }
+        }
+
+        /*
+         * =====================================================
+         * VALIDASI TANGGAL
+         * =====================================================
+         */
+
+        if (
+            mapped.tanggal_mulai_prb &&
+            !isValidDateString(
+                mapped.tanggal_mulai_prb
+            )
+        ) {
+            errors.push(
+                'Tanggal Mulai PRB tidak valid. Gunakan format DD-MM-YYYY.'
+            );
+        }
+
+        if (
+            mapped.tanggal_pengambilan_terakhir &&
+            !isValidDateString(
+                mapped.tanggal_pengambilan_terakhir
+            )
+        ) {
+            errors.push(
+                'Pengambilan Terakhir tidak valid. Gunakan format DD-MM-YYYY.'
+            );
+        }
+
+        /*
+         * Pengambilan terakhir tidak boleh
+         * lebih awal dari tanggal mulai PRB.
+         */
+        if (
+            mapped.tanggal_mulai_prb &&
+            mapped.tanggal_pengambilan_terakhir &&
+            isValidDateString(
+                mapped.tanggal_mulai_prb
+            ) &&
+            isValidDateString(
+                mapped.tanggal_pengambilan_terakhir
+            )
+        ) {
+            const mulai =
+                new Date(
+                    mapped.tanggal_mulai_prb
+                );
+
+            const terakhir =
+                new Date(
+                    mapped.tanggal_pengambilan_terakhir
+                );
+
+            if (terakhir < mulai) {
+                errors.push(
+                    'Pengambilan Terakhir tidak boleh lebih awal dari Tanggal Mulai PRB.'
+                );
+            }
         }
 
         return {
@@ -90,65 +292,364 @@ export function validateImportData(rows: Record<string, any>[]): ValidationResul
     });
 }
 
-function formatDateValue(val: any): string {
-    if (!val) return '';
-    if (val instanceof Date) {
-        return val.toISOString().split('T')[0];
-    }
-    const str = String(val).trim();
-    // Cek apakah sudah YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    // Coba parse berbagai format
-    const parsed = new Date(str);
-    if (!isNaN(parsed.getTime())) {
-        return parsed.toISOString().split('T')[0];
-    }
-    return str;
-}
-
 /**
- * Generate file Excel dari data ekspor.
+ * =========================================================
+ * FORMAT TANGGAL
+ * =========================================================
+ *
+ * Output selalu:
+ *
+ * YYYY-MM-DD
+ *
+ * Contoh:
+ *
+ * 15-01-2024
+ * ↓
+ * 2024-01-15
+ *
+ * 15/01/2024
+ * ↓
+ * 2024-01-15
  */
-export function exportToExcel(data: Record<string, any>[], filename: string = 'laporan-smart-prb.xlsx'): void {
-    const worksheet = XLSX.utils.json_to_sheet(data);
+function formatDateValue(
+    val: any
+): string {
+    if (
+        val === null ||
+        val === undefined ||
+        val === ''
+    ) {
+        return '';
+    }
 
-    // Auto-width kolom
-    const colWidths = Object.keys(data[0] || {}).map(key => ({
-        wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length)) + 2,
-    }));
-    worksheet['!cols'] = colWidths;
+    /*
+     * Jika XLSX sudah membaca sebagai Date.
+     */
+    if (val instanceof Date) {
+        if (isNaN(val.getTime())) {
+            return '';
+        }
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Laporan PRB');
-    XLSX.writeFile(workbook, filename);
+        const year =
+            val.getFullYear();
+
+        const month =
+            String(
+                val.getMonth() + 1
+            ).padStart(2, '0');
+
+        const day =
+            String(
+                val.getDate()
+            ).padStart(2, '0');
+
+        return `${year}-${month}-${day}`;
+    }
+
+    const str =
+        String(val).trim();
+
+    if (!str) {
+        return '';
+    }
+
+    /*
+     * Format YYYY-MM-DD
+     */
+    if (
+        /^\d{4}-\d{2}-\d{2}$/.test(
+            str
+        )
+    ) {
+        return str;
+    }
+
+    /*
+     * Format DD-MM-YYYY
+     */
+    const ddmmyyyy =
+        str.match(
+            /^(\d{1,2})-(\d{1,2})-(\d{4})$/
+        );
+
+    if (ddmmyyyy) {
+        const day =
+            Number(ddmmyyyy[1]);
+
+        const month =
+            Number(ddmmyyyy[2]);
+
+        const year =
+            Number(ddmmyyyy[3]);
+
+        return buildDateString(
+            year,
+            month,
+            day
+        );
+    }
+
+    /*
+     * Format DD/MM/YYYY
+     */
+    const ddmmyyyySlash =
+        str.match(
+            /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+        );
+
+    if (ddmmyyyySlash) {
+        const day =
+            Number(
+                ddmmyyyySlash[1]
+            );
+
+        const month =
+            Number(
+                ddmmyyyySlash[2]
+            );
+
+        const year =
+            Number(
+                ddmmyyyySlash[3]
+            );
+
+        return buildDateString(
+            year,
+            month,
+            day
+        );
+    }
+
+    /*
+     * Excel serial number.
+     */
+    if (
+        /^\d+(\.\d+)?$/.test(str)
+    ) {
+        const serial =
+            Number(str);
+
+        if (
+            serial > 20000 &&
+            serial < 100000
+        ) {
+            const excelDate =
+                XLSX.SSF.parse_date_code(
+                    serial
+                );
+
+            if (excelDate) {
+                return buildDateString(
+                    excelDate.y,
+                    excelDate.m,
+                    excelDate.d
+                );
+            }
+        }
+    }
+
+    return '';
 }
 
 /**
- * Generate template Excel kosong untuk import.
+ * =========================================================
+ * BENTUKKAN YYYY-MM-DD
+ * =========================================================
+ */
+function buildDateString(
+    year: number,
+    month: number,
+    day: number
+): string {
+    const date =
+        new Date(
+            year,
+            month - 1,
+            day
+        );
+
+    /*
+     * Cegah tanggal seperti:
+     * 31-02-2024
+     */
+    if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+    ) {
+        return '';
+    }
+
+    return [
+        year,
+        String(month).padStart(
+            2,
+            '0'
+        ),
+        String(day).padStart(
+            2,
+            '0'
+        ),
+    ].join('-');
+}
+
+/**
+ * =========================================================
+ * VALIDASI STRING TANGGAL
+ * =========================================================
+ */
+function isValidDateString(
+    value: string
+): boolean {
+    if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(
+            value
+        )
+    ) {
+        return false;
+    }
+
+    const [year, month, day] =
+        value
+            .split('-')
+            .map(Number);
+
+    return (
+        buildDateString(
+            year,
+            month,
+            day
+        ) === value
+    );
+}
+
+/**
+ * =========================================================
+ * EXPORT EXCEL
+ * =========================================================
+ */
+export function exportToExcel(
+    data: Record<string, any>[],
+    filename: string =
+        'laporan-smart-prb.xlsx'
+): void {
+    const worksheet =
+        XLSX.utils.json_to_sheet(
+            data
+        );
+
+    const colWidths =
+        Object.keys(
+            data[0] || {}
+        ).map((key) => ({
+            wch:
+                Math.max(
+                    key.length,
+                    ...data.map((row) =>
+                        String(
+                            row[key] ?? ''
+                        ).length
+                    )
+                ) + 2,
+        }));
+
+    worksheet['!cols'] =
+        colWidths;
+
+    const workbook =
+        XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        'Laporan PRB'
+    );
+
+    XLSX.writeFile(
+        workbook,
+        filename
+    );
+}
+
+/**
+ * =========================================================
+ * DOWNLOAD TEMPLATE IMPORT
+ * =========================================================
+ *
+ * HANYA 8 KOLOM.
+ *
+ * Tidak ada:
+ * - Jenis PRB
+ * - Jatah Obat
+ * - Jadwal Berikutnya
+ * - Realisasi
+ * - Status
+ * - Status Kepatuhan
  */
 export function downloadImportTemplate(): void {
     const template = [
         {
-            'Kode Pasien': 'PRB-001 (opsional, auto-generate jika kosong)',
-            'Nama Pasien': 'Contoh: Ahmad Sudirman',
-            'No. Kartu BPJS': '0001234567890',
-            'No. WhatsApp': '081234567890',
-            'FKTP Asal': 'Puskesmas Kecamatan X',
-            'Diagnosis PRB': 'Hipertensi',
-            'Tanggal Mulai PRB': '2024-01-15',
-            'Pengambilan Terakhir': '2024-08-15',
-            'Status': 'Aktif',
+            'No. Faktur / No. Transaksi Apotek':
+                'INV-202408-001',
+
+            'Kode Pasien':
+                'PRB-001',
+
+            'Nama Pasien':
+                'Ahmad Sudirman',
+
+            'No. Kartu BPJS':
+                '0001234567890',
+
+            'No. WhatsApp':
+                '081234567890',
+
+            'FKTP Asal':
+                'Puskesmas Kecamatan X',
+
+            'Diagnosis PRB':
+                'Hipertensi',
+
+            'Tanggal Mulai PRB':
+                '15-01-2024',
+
+            'Tanggal Berobat':
+                '15-08-2024',
+
+            'Tanggal Pengambilan':
+                '15-08-2024',
         },
     ];
 
-    const worksheet = XLSX.utils.json_to_sheet(template);
+    const worksheet =
+        XLSX.utils.json_to_sheet(
+            template
+        );
+
     worksheet['!cols'] = [
-        { wch: 20 }, { wch: 30 }, { wch: 20 }, { wch: 18 },
-        { wch: 30 }, { wch: 20 }, { wch: 18 }, { wch: 18 },
-        { wch: 10 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 30 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 32 },
+        { wch: 24 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 24 },
     ];
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Template Import');
-    XLSX.writeFile(workbook, 'template-import-pasien-prb.xlsx');
+    const workbook =
+        XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        'Template Import'
+    );
+
+    XLSX.writeFile(
+        workbook,
+        'template-import-pasien-prb.xlsx'
+    );
 }

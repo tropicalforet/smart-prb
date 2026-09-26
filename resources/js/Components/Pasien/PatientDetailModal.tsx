@@ -112,7 +112,20 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi 
                         <div className="space-y-3 text-sm">
                             <div className="flex items-center gap-3 text-slate-600">
                                 <Stethoscope className="w-4 h-4 text-slate-400 shrink-0" />
-                                <span className="font-medium">{pasien.diagnosis_prb}</span>
+                                <span className="font-medium">
+                                    {(() => {
+                                        let diag = pasien.diagnosis_prb;
+                                        if (typeof diag === 'string') {
+                                            try {
+                                                const parsed = JSON.parse(diag);
+                                                if (Array.isArray(parsed)) diag = parsed;
+                                            } catch (e) {}
+                                        }
+                                        return Array.isArray(diag) && diag.length > 0 
+                                            ? diag.join(', ') 
+                                            : (diag || '-');
+                                    })()}
+                                </span>
                             </div>
                             <div className="flex items-center gap-3 text-slate-600">
                                 <Activity className="w-4 h-4 text-slate-400 shrink-0" />
@@ -234,6 +247,16 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi 
                                                         </span>
                                                     </div>
                                                     <div className="text-sm text-slate-500">
+                                                        {riwayat.no_faktur && (
+                                                            <div className="text-xs font-mono text-slate-600 mb-1">
+                                                                No. Faktur: <span className="font-semibold text-slate-700">{riwayat.no_faktur}</span>
+                                                            </div>
+                                                        )}
+                                                        {riwayat.tanggal_berobat && (
+                                                            <div className="text-xs text-slate-600 mb-1">
+                                                                Tgl Berobat: {new Date(riwayat.tanggal_berobat).toLocaleDateString('id-ID')}
+                                                            </div>
+                                                        )}
                                                         Jadwal Target: {new Date(riwayat.jadwal_target).toLocaleDateString('id-ID')}
                                                         <br />
                                                         {riwayat.selisih_hari > 0 ? `Terlambat ${riwayat.selisih_hari} hari` : (riwayat.selisih_hari < 0 ? `Lebih cepat ${Math.abs(riwayat.selisih_hari)} hari` : 'Tepat waktu')}

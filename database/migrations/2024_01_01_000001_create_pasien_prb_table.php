@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('no_kartu_bpjs');
             $table->string('no_whatsapp')->nullable();
             $table->string('fktp_asal');
-            $table->string('diagnosis_prb');
+            $table->json('diagnosis_prb');
             $table->date('tanggal_mulai_prb');
             $table->date('tanggal_pengambilan_terakhir')->nullable();
             $table->date('tanggal_jadwal_berikutnya')->nullable();

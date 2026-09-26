@@ -43,7 +43,7 @@ class PasienPrbSeeder extends Seeder
                 'no_kartu_bpjs' => $faker->numerify('0001########'),
                 'no_whatsapp' => '08' . $faker->numerify('12########'),
                 'fktp_asal' => $faker->randomElement($fktpList),
-                'diagnosis_prb' => $faker->randomElement(PasienPrb::DIAGNOSIS_OPTIONS),
+                'diagnosis_prb' => $faker->randomElements(PasienPrb::DIAGNOSIS_OPTIONS, rand(1, 3)),
                 'tanggal_mulai_prb' => $tanggalMulai->toDateString(),
                 'jatah_obat' => $jatahObat,
                 'status' => $status,
@@ -56,8 +56,8 @@ class PasienPrbSeeder extends Seeder
             if ($status === 'Aktif') {
                 $skenario = $faker->randomElement([
                     'patuh', // Pengambilan terakhir bulan lalu, jadwal target masih bulan ini (belum/sudah diambil tepat waktu)
-                    'terlambat_toleransi', // Jadwal target lewat 1-7 hari
-                    'terlambat_jauh', // Jadwal target lewat > 7 hari
+                    'terlambat_toleransi', // Jadwal target lewat 1-3 hari
+                    'terlambat_jauh', // Jadwal target lewat > 3 hari
                 ]);
 
                 $hariIni = Carbon::today();
@@ -68,11 +68,11 @@ class PasienPrbSeeder extends Seeder
                         $tglTerakhir = $hariIni->copy()->subDays(28);
                         break;
                     case 'terlambat_toleransi':
-                        // Ambil 34 hari lalu, jadwalnya hari ini - 4 (Lewat 4 hari)
-                        $tglTerakhir = $hariIni->copy()->subDays(34);
+                        // Ambil 32 hari lalu, jadwalnya hari ini - 2 (Lewat 2 hari, masih dalam H+3)
+                        $tglTerakhir = $hariIni->copy()->subDays(32);
                         break;
                     case 'terlambat_jauh':
-                        // Ambil 45 hari lalu, jadwalnya hari ini - 15 (Lewat 15 hari)
+                        // Ambil 45 hari lalu, jadwalnya hari ini - 15 (Lewat 15 hari, overdue > H+3)
                         $tglTerakhir = $hariIni->copy()->subDays(45);
                         break;
                 }

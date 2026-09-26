@@ -37,6 +37,7 @@ class PasienPrb extends Model
         'tanggal_jadwal_berikutnya' => 'date',
         'tanggal_realisasi' => 'date',
         'jatah_obat' => 'integer',
+        'diagnosis_prb' => 'array',
     ];
 
     public const DIAGNOSIS_OPTIONS = [

@@ -40,7 +40,7 @@ export function QuickRealisasiModal({ pasien, isOpen, onClose }: Props) {
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4 text-sm">
                     <div className="font-medium text-slate-800">{pasien.nama_pasien}</div>
-                    <div className="text-slate-500 text-xs mt-0.5">Jadwal Target: {pasien.tanggal_jadwal_berikutnya ? new Date(pasien.tanggal_jadwal_berikutnya).toLocaleDateString('id-ID') : '-'}</div>
+                    <div className="text-slate-500 text-xs mt-0.5">Jadwal Target: {pasien.jadwal_target_aktif ? new Date(pasien.jadwal_target_aktif).toLocaleDateString('id-ID') : (pasien.tanggal_jadwal_berikutnya ? new Date(pasien.tanggal_jadwal_berikutnya).toLocaleDateString('id-ID') : '-')}</div>
                 </div>
 
                 <div>
