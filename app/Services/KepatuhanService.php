@@ -66,9 +66,12 @@ class KepatuhanService
         if ($pasien->status === 'Pasif') {
             return [
                 'status' => 'Pasif',
-                'early_warning' => 'Tidak Berlaku',
+                'early_warning' => 'Abu-abu',
                 'selisih_hari' => 0,
-                'keterangan' => $pasien->alasan_pasif ?? 'Pasien tidak aktif',
+                'keterangan' => $pasien->alasan_pasif ?? 'Dikeluarkan dari pemantauan aktif',
+                'tindakan' => '-',
+                'jadwal_target_aktif' => null,
+                'tanggal_realisasi_aktif' => null,
             ];
         }
 
@@ -82,9 +85,12 @@ class KepatuhanService
         if (!$jadwalAktif) {
             return [
                 'status' => 'Belum Ada Jadwal',
-                'early_warning' => 'Belum Ada Jadwal',
+                'early_warning' => 'Abu-abu',
                 'selisih_hari' => 0,
                 'keterangan' => 'Belum ada jadwal pengambilan obat yang dapat dinilai',
+                'tindakan' => '-',
+                'jadwal_target_aktif' => null,
+                'tanggal_realisasi_aktif' => null,
             ];
         }
 
@@ -95,62 +101,56 @@ class KepatuhanService
         $batasAkhirToleransi = $jadwalAktif->copy()->addDays(self::TOLERANSI_SESUDAH);
         $selisihEvaluasi = (int) $jadwalAktif->diffInDays($evaluasi, false);
 
-        // KONDISI 1: Hari ini < (jadwal - 3 hari)
-        if ($evaluasi->lt($batasAwalToleransi)) {
-            // Jika belum jatuh tempo, status kepatuhan (hasil) menggunakan
-            // riwayat transaksi terakhir pasien (jika ada).
-            $statusTerakhir = 'Belum Jatuh Tempo';
-            $jadwalTargetAktif = $jadwalAktif ? $jadwalAktif->toDateString() : null;
-            
-            // Cek riwayat terakhir yang ada
-            $riwayatTerakhir = $pasien->riwayatPengambilanObat
-                ? $pasien->riwayatPengambilanObat->sortByDesc('tanggal_pengambilan')->first()
-                : null;
-                
-            if ($riwayatTerakhir) {
-                $statusTerakhir = $riwayatTerakhir->status_kepatuhan;
-                $jadwalTargetAktif = $riwayatTerakhir->jadwal_target;
+        // Cek realisasi pada siklus aktif
+        $realisasiSiklusAktif = null;
+        if ($pasien->tanggal_realisasi) {
+            $tglRealisasi = Carbon::parse($pasien->tanggal_realisasi)->startOfDay();
+            if ($tglRealisasi->between($batasAwalToleransi, $batasAkhirToleransi, true)) {
+                $realisasiSiklusAktif = $tglRealisasi;
             }
+        }
 
+        // Jika sudah mengambil pada H-3 s.d H+3
+        if ($realisasiSiklusAktif) {
+            $selisihRealisasi = (int) $jadwalAktif->diffInDays($realisasiSiklusAktif, false);
             return [
-                'status' => $statusTerakhir,
-                'early_warning' => 'Belum Jatuh Tempo',
-                'selisih_hari' => $selisihEvaluasi,
-                'keterangan' => 'Belum memasuki periode pengambilan',
-                'jadwal_target_aktif' => $jadwalTargetAktif,
+                'status' => 'Patuh',
+                'early_warning' => 'Hijau - Patuh',
+                'selisih_hari' => $selisihRealisasi,
+                'keterangan' => 'Pengambilan obat dilakukan tepat dalam masa toleransi',
+                'tindakan' => 'Tidak perlu tindak lanjut',
+                'jadwal_target_aktif' => $jadwalAktif->toDateString(),
+                'tanggal_realisasi_aktif' => $realisasiSiklusAktif->toDateString(),
             ];
         }
 
-        // KONDISI 2: Hari ini berada pada H-3 s.d H+3
+        // BELUM MENGAMBIL: KONDISI 1: Hari ini < (jadwal - 3 hari)
+        if ($evaluasi->lt($batasAwalToleransi)) {
+            return [
+                'status' => 'Belum Jatuh Tempo',
+                'early_warning' => 'Biru - Belum memasuki jadwal',
+                'selisih_hari' => $selisihEvaluasi,
+                'keterangan' => 'Belum memasuki periode pengambilan',
+                'tindakan' => 'Belum perlu tindakan, bisa dilayani',
+                'jadwal_target_aktif' => $jadwalAktif->toDateString(),
+                'tanggal_realisasi_aktif' => null,
+            ];
+        }
+
+        // BELUM MENGAMBIL: KONDISI 2: Hari ini berada pada H-3 s.d H+3
         if ($evaluasi->lte($batasAkhirToleransi)) {
-            // Cek apakah ada realisasi yang dicatat untuk siklus aktif ini
-            $realisasiSiklusAktif = null;
-            if ($pasien->tanggal_realisasi) {
-                $tglRealisasi = Carbon::parse($pasien->tanggal_realisasi)->startOfDay();
-                if ($tglRealisasi->between($batasAwalToleransi, $batasAkhirToleransi, true)) {
-                    $realisasiSiklusAktif = $tglRealisasi;
-                }
-            }
-
-            if ($realisasiSiklusAktif) {
-                $selisihRealisasi = (int) $jadwalAktif->diffInDays($realisasiSiklusAktif, false);
-                return [
-                    'status' => 'Patuh',
-                    'early_warning' => 'Patuh',
-                    'selisih_hari' => $selisihRealisasi,
-                    'keterangan' => 'Pengambilan obat dilakukan tepat dalam masa toleransi',
-                ];
-            }
-
-            $earlyWarning = 'Masih Toleransi';
-            $keterangan = 'Belum mengambil obat, masih dalam batas toleransi sampai H+3';
-
             if ($evaluasi->lt($jadwalAktif)) {
-                $earlyWarning = 'Jadwal Mendekat';
+                $earlyWarning = 'Kuning - Jadwal mendekat';
+                $tindakan = 'Reminder kepada pasien';
                 $keterangan = 'Jadwal pengambilan mendekat';
             } elseif ($evaluasi->equalTo($jadwalAktif)) {
-                $earlyWarning = 'Hari Pengambilan';
+                $earlyWarning = 'Oranye - Jatuh tempo';
+                $tindakan = 'Reminder lebih aktif';
                 $keterangan = 'Hari ini merupakan tanggal pengambilan obat';
+            } else {
+                $earlyWarning = 'Oranye - Belum mengambil, masih toleransi';
+                $tindakan = 'Hubungi pasien dan informasikan FKTP';
+                $keterangan = 'Belum mengambil obat, masih dalam batas toleransi sampai H+3';
             }
 
             return [
@@ -158,47 +158,21 @@ class KepatuhanService
                 'early_warning' => $earlyWarning,
                 'selisih_hari' => $selisihEvaluasi,
                 'keterangan' => $keterangan,
+                'tindakan' => $tindakan,
+                'jadwal_target_aktif' => $jadwalAktif->toDateString(),
+                'tanggal_realisasi_aktif' => null,
             ];
         }
 
-        // KONDISI 3: Hari ini > (jadwal + 3 hari)
-        if ($pasien->tanggal_realisasi) {
-            $tglRealisasi = Carbon::parse($pasien->tanggal_realisasi)->startOfDay();
-            $selisihRealisasi = (int) $jadwalAktif->diffInDays($tglRealisasi, false);
-            $dalamToleransi = $tglRealisasi->between($batasAwalToleransi, $batasAkhirToleransi, true);
-
-            if ($dalamToleransi) {
-                return [
-                    'status' => 'Patuh',
-                    'early_warning' => 'Patuh',
-                    'selisih_hari' => $selisihRealisasi,
-                    'keterangan' => 'Pengambilan obat dilakukan tepat dalam masa toleransi',
-                ];
-            }
-
-            if ($selisihRealisasi < -self::TOLERANSI_SEBELUM) {
-                return [
-                    'status' => 'Tidak Patuh',
-                    'early_warning' => 'Perlu Verifikasi',
-                    'selisih_hari' => $selisihRealisasi,
-                    'keterangan' => 'Pengambilan terlalu awal',
-                ];
-            }
-
-            return [
-                'status' => 'Tidak Patuh',
-                'early_warning' => 'Tidak Patuh',
-                'selisih_hari' => $selisihRealisasi,
-                'keterangan' => 'Terlambat ' . $selisihRealisasi . ' hari, melewati batas toleransi H+3',
-            ];
-        }
-
-        // Belum ada realisasi untuk jadwal aktif yang sudah terlewat H+3
+        // BELUM MENGAMBIL / LEWAT BATAS: KONDISI 3: Hari ini > (jadwal + 3 hari)
         return [
             'status' => 'Tidak Patuh',
-            'early_warning' => 'Overdue',
+            'early_warning' => 'Merah - Tidak patuh/Overdue',
             'selisih_hari' => $selisihEvaluasi,
             'keterangan' => 'Terlambat ' . $selisihEvaluasi . ' hari, melewati batas toleransi H+3',
+            'tindakan' => 'Segera dilaporkan kepada FKTP untuk ditindaklanjuti',
+            'jadwal_target_aktif' => $jadwalAktif->toDateString(),
+            'tanggal_realisasi_aktif' => null,
         ];
     }
 

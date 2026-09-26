@@ -13,6 +13,7 @@ Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']
 
 // Pasien aksi tambahan
 Route::post('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasi'])->name('pasien.realisasi');
+Route::put('pasien/{pasien}/jadwal', [PasienPrbController::class, 'updateJadwal'])->name('pasien.jadwal.update');
 Route::post('pasien/{pasien}/status', [PasienPrbController::class, 'updateStatus'])->name('pasien.status');
 Route::post('pasien/import/batch', [PasienPrbController::class, 'import'])->name('pasien.import');
 Route::post('pasien/hapus-massal', [PasienPrbController::class, 'destroyBulk'])->name('pasien.destroy-bulk');

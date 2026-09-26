@@ -144,11 +144,11 @@ class PasienPrbController extends Controller
 
                         'jadwal_target_aktif' => $filterPeriode 
                             ? $kepatuhan['jadwal_target_aktif'] 
-                            : ($kepatuhan['jadwal_target_aktif'] ?? $pasien->tanggal_jadwal_berikutnya?->toDateString()),
+                            : (array_key_exists('jadwal_target_aktif', $kepatuhan) ? $kepatuhan['jadwal_target_aktif'] : $pasien->tanggal_jadwal_berikutnya?->toDateString()),
 
                         'tanggal_realisasi_aktif' => $filterPeriode
                             ? $kepatuhan['tanggal_realisasi_aktif']
-                            : ($kepatuhan['tanggal_realisasi_aktif'] ?? $pasien->tanggal_realisasi?->toDateString()),
+                            : (array_key_exists('tanggal_realisasi_aktif', $kepatuhan) ? $kepatuhan['tanggal_realisasi_aktif'] : $pasien->tanggal_realisasi?->toDateString()),
                     ]
                 );
             });
@@ -594,6 +594,33 @@ class PasienPrbController extends Controller
             ->with(
                 'success',
                 'Realisasi pengambilan obat berhasil dicatat.'
+            );
+    }
+
+    /**
+     * =========================================================
+     * UPDATE JADWAL
+     * =========================================================
+     *
+     * Edit manual tanggal jadwal berikutnya.
+     */
+    public function updateJadwal(
+        Request $request,
+        PasienPrb $pasien
+    ) {
+        $validated = $request->validate([
+            'tanggal_jadwal_berikutnya' => 'required|date',
+        ]);
+
+        $pasien->update([
+            'tanggal_jadwal_berikutnya' => $validated['tanggal_jadwal_berikutnya']
+        ]);
+
+        return redirect()
+            ->back()
+            ->with(
+                'success',
+                'Jadwal pengambilan obat berhasil diperbarui.'
             );
     }
 

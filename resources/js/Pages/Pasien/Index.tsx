@@ -63,6 +63,10 @@ export default function PasienIndex({
         useState<PasienPRB | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Inline edit schedule
+    const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+    const [scheduleValue, setScheduleValue] = useState<string>('');
+
     // Bulk selection states
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -118,6 +122,26 @@ export default function PasienIndex({
                 setIsDeleting(false);
             },
         });
+    };
+
+    const handleEditSchedule = (pasien: PasienPRB) => {
+        setEditingScheduleId(pasien.id);
+        setScheduleValue(pasien.tanggal_jadwal_berikutnya || '');
+    };
+
+    const handleSaveSchedule = (pasienId: string) => {
+        router.put(`/pasien/${pasienId}/jadwal`, {
+            tanggal_jadwal_berikutnya: scheduleValue
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setEditingScheduleId(null);
+            }
+        });
+    };
+
+    const handleCancelEditSchedule = () => {
+        setEditingScheduleId(null);
     };
 
     // Handle bulk delete
@@ -694,24 +718,45 @@ export default function PasienIndex({
 
                                                 {/* 5. JADWAL AMBIL OBAT */}
                                                 <td className="px-5 py-4">
-                                                    {pasien.status ===
-                                                    'Pasif' ? (
+                                                    {pasien.status === 'Pasif' ? (
                                                         <span className="text-slate-400 text-xs italic">
                                                             Pasien Non-Aktif
                                                         </span>
+                                                    ) : editingScheduleId === pasien.id ? (
+                                                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                            <input
+                                                                type="date"
+                                                                value={scheduleValue}
+                                                                onChange={(e) => setScheduleValue(e.target.value)}
+                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[125px]"
+                                                            />
+                                                            <button onClick={() => handleSaveSchedule(pasien.id)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                                            </button>
+                                                            <button onClick={handleCancelEditSchedule} className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors" title="Batal">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                            </button>
+                                                        </div>
                                                     ) : (
                                                         <div
-                                                            className={`font-medium ${
+                                                            className={`font-medium cursor-pointer hover:bg-slate-100 p-1.5 rounded -ml-1 flex items-center justify-between group transition-colors ${
                                                                 pasien.tanggal_jadwal_berikutnya
                                                                     ? 'text-slate-800'
                                                                     : 'text-slate-400 italic'
                                                             }`}
+                                                            onClick={(e) => { e.stopPropagation(); handleEditSchedule(pasien); }}
+                                                            title="Klik untuk mengubah jadwal manual"
                                                         >
-                                                            {pasien.tanggal_jadwal_berikutnya
-                                                                ? formatTanggal(
-                                                                      pasien.tanggal_jadwal_berikutnya
-                                                                  )
-                                                                : 'Belum ada jadwal'}
+                                                            <span>
+                                                                {pasien.tanggal_jadwal_berikutnya
+                                                                    ? formatTanggal(
+                                                                          pasien.tanggal_jadwal_berikutnya
+                                                                      )
+                                                                    : 'Belum ada jadwal'}
+                                                            </span>
+                                                            <span className="opacity-0 group-hover:opacity-100 text-teal-600 transition-opacity ml-2">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                            </span>
                                                         </div>
                                                     )}
                                                 </td>
@@ -730,42 +775,30 @@ export default function PasienIndex({
 
                                                         let ewColor = 'text-slate-500 bg-slate-50 border-slate-200';
                                                         let ewLabel = ew;
+                                                        let ewIcon = '';
 
-                                                        if (ew === 'Belum Jatuh Tempo' || ew === 'Belum Memasuki Jadwal') {
+                                                        if (ew === 'Biru - Belum memasuki jadwal') {
                                                             ewColor = 'text-blue-700 bg-blue-50 border-blue-200';
-                                                            ewLabel = 'Belum Jatuh Tempo';
-                                                        } else if (ew === 'Jadwal Mendekat') {
+                                                            ewIcon = '🔵 ';
+                                                        } else if (ew === 'Kuning - Jadwal mendekat') {
                                                             ewColor = 'text-amber-700 bg-amber-50 border-amber-200';
-                                                            ewLabel = 'Jadwal Mendekat';
-                                                        } else if (ew === 'Hari Pengambilan' || ew === 'Jatuh Tempo') {
+                                                            ewIcon = '🟡 ';
+                                                        } else if (ew.startsWith('Oranye - ')) {
                                                             ewColor = 'text-orange-700 bg-orange-50 border-orange-200';
-                                                            ewLabel = 'Hari Pengambilan';
-                                                        } else if (ew === 'Masih Toleransi') {
-                                                            ewColor = 'text-amber-700 bg-amber-50 border-amber-200';
-                                                            ewLabel = 'Masih Toleransi';
-                                                        } else if (ew === 'Overdue') {
+                                                            ewIcon = '🟠 ';
+                                                        } else if (ew === 'Merah - Tidak patuh/Overdue') {
                                                             ewColor = 'text-rose-700 bg-rose-50 border-rose-200';
-                                                            ewLabel = 'Overdue';
-                                                        } else if (ew === 'Tidak Patuh') {
-                                                            ewColor = 'text-rose-700 bg-rose-50 border-rose-200';
-                                                            ewLabel = 'Tidak Patuh';
-                                                        } else if (ew === 'Patuh') {
+                                                            ewIcon = '🔴 ';
+                                                        } else if (ew === 'Hijau - Patuh') {
                                                             ewColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
-                                                            ewLabel = 'Patuh';
-                                                        } else if (ew === 'Perlu Verifikasi') {
-                                                            ewColor = 'text-violet-700 bg-violet-50 border-violet-200';
-                                                            ewLabel = 'Perlu Verifikasi';
-                                                        } else if (ew === 'Belum Ada Jadwal') {
-                                                            ewColor = 'text-slate-500 bg-slate-50 border-slate-200';
-                                                            ewLabel = 'Belum Ada Jadwal';
-                                                        } else if (ew === 'Tidak Berlaku' || ew === 'Tidak berlaku' || ew === 'Pasif') {
+                                                            ewIcon = '🟢 ';
+                                                        } else if (ew === 'Abu-abu' || ew === 'Tidak Berlaku') {
                                                             ewColor = 'text-slate-500 bg-slate-100 border-slate-200';
-                                                            ewLabel = 'Tidak Berlaku';
                                                         }
 
                                                         return (
                                                             <span className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border ${ewColor}`}>
-                                                                {ewLabel}
+                                                                {ewIcon}{ewLabel}
                                                             </span>
                                                         );
                                                     })()}
