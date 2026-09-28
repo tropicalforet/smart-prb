@@ -5,8 +5,13 @@ use App\Http\Controllers\PasienPrbController;
 use App\Http\Controllers\TindakLanjutController;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\RekapKepatuhanController;
+
 // Dashboard
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+// Rekap Kepatuhan
+Route::get('/rekap', [RekapKepatuhanController::class, 'index'])->name('rekap.index');
 
 // Pasien CRUD
 Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']);

@@ -10,7 +10,7 @@ import {
 import { Button } from '@/Components/ui/Button';
 import { StatusBadge } from '@/Components/ui/Badge';
 import { WhatsAppButton } from '@/Components/Pasien/WhatsAppButton';
-import { QuickRealisasiModal } from '@/Components/Pasien/QuickRealisasiModal';
+
 import { PatientDetailModal } from '@/Components/Pasien/PatientDetailModal';
 import { AddPatientModal } from '@/Components/Pasien/AddPatientModal';
 import { ImportExcelModal } from '@/Components/Pasien/ImportExcelModal';
@@ -21,7 +21,6 @@ import {
     Plus,
     FileSpreadsheet,
     Download,
-    RefreshCw,
     CalendarDays,
     MoreVertical,
     Trash2,
@@ -57,8 +56,9 @@ export default function PasienIndex({
     const [addModalOpen, setAddModalOpen] = useState(false);
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [detailPasienId, setDetailPasienId] = useState<string | null>(null);
-    const [realisasiPasien, setRealisasiPasien] =
-        useState<PasienPRB | null>(null);
+    // Inline edit realisasi
+    const [editingRealisasiId, setEditingRealisasiId] = useState<string | null>(null);
+    const [realisasiValue, setRealisasiValue] = useState<string>('');
     const [deletePasien, setDeletePasien] =
         useState<PasienPRB | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -144,6 +144,27 @@ export default function PasienIndex({
         setEditingScheduleId(null);
     };
 
+    // Inline edit realisasi handlers
+    const handleEditRealisasi = (pasien: PasienPRB) => {
+        setEditingRealisasiId(pasien.id);
+        setRealisasiValue(pasien.tanggal_realisasi || new Date().toISOString().split('T')[0]);
+    };
+
+    const handleSaveRealisasi = (pasienId: string) => {
+        router.post(`/pasien/${pasienId}/realisasi`, {
+            tanggal_realisasi: realisasiValue
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setEditingRealisasiId(null);
+            }
+        });
+    };
+
+    const handleCancelEditRealisasi = () => {
+        setEditingRealisasiId(null);
+    };
+
     // Handle bulk delete
     const handleBulkDelete = () => {
         setIsBulkDeleting(true);
@@ -186,6 +207,13 @@ export default function PasienIndex({
         },
         [filters, searchTerm, evalDate]
     );
+
+    // Reset filters
+    const resetFilters = () => {
+        setSearchTerm('');
+        setEvalDate(new Date().toLocaleDateString('en-CA')); // format YYYY-MM-DD
+        router.get('/pasien', {}, { preserveState: true, preserveScroll: true });
+    };
 
     // Handle search input with Enter
     const handleSearch = (
@@ -484,6 +512,18 @@ export default function PasienIndex({
                                     )}
                                 </select>
                             </div>
+
+                            {/* Tombol Reset */}
+                            <div className="flex items-end">
+                                <Button 
+                                    variant="outline" 
+                                    className="w-full text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 h-[42px]" 
+                                    onClick={resetFilters}
+                                >
+                                    <X className="w-4 h-4 mr-2" />
+                                    Reset Filter
+                                </Button>
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -777,22 +817,22 @@ export default function PasienIndex({
                                                         let ewLabel = ew;
                                                         let ewIcon = '';
 
-                                                        if (ew === 'Biru - Belum memasuki jadwal') {
+                                                        if (ew === 'Belum memasuki jadwal') {
                                                             ewColor = 'text-blue-700 bg-blue-50 border-blue-200';
                                                             ewIcon = '🔵 ';
-                                                        } else if (ew === 'Kuning - Jadwal mendekat') {
+                                                        } else if (ew === 'Jadwal Mendekat' || ew === 'Jadwal mendekat') {
                                                             ewColor = 'text-amber-700 bg-amber-50 border-amber-200';
                                                             ewIcon = '🟡 ';
-                                                        } else if (ew.startsWith('Oranye - ')) {
+                                                        } else if (ew === 'Jatuh Tempo' || ew === 'Jatuh tempo' || ew === 'Masih Toleransi' || ew === 'Belum mengambil, masih toleransi') {
                                                             ewColor = 'text-orange-700 bg-orange-50 border-orange-200';
                                                             ewIcon = '🟠 ';
-                                                        } else if (ew === 'Merah - Tidak patuh/Overdue') {
+                                                        } else if (ew === 'Tidak Patuh/Overdue' || ew === 'Tidak patuh/Overdue') {
                                                             ewColor = 'text-rose-700 bg-rose-50 border-rose-200';
                                                             ewIcon = '🔴 ';
-                                                        } else if (ew === 'Hijau - Patuh') {
+                                                        } else if (ew === 'Patuh') {
                                                             ewColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
                                                             ewIcon = '🟢 ';
-                                                        } else if (ew === 'Abu-abu' || ew === 'Tidak Berlaku') {
+                                                        } else if (ew === 'Pasif' || ew === 'Tidak Berlaku') {
                                                             ewColor = 'text-slate-500 bg-slate-100 border-slate-200';
                                                         }
 
@@ -808,19 +848,41 @@ export default function PasienIndex({
                                                 <td className="px-5 py-4">
                                                     {pasien.status === 'Pasif' ? (
                                                         <div className="font-medium text-slate-400 italic">—</div>
+                                                    ) : editingRealisasiId === pasien.id ? (
+                                                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                            <input
+                                                                type="date"
+                                                                value={realisasiValue}
+                                                                onChange={(e) => setRealisasiValue(e.target.value)}
+                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[125px]"
+                                                            />
+                                                            <button onClick={() => handleSaveRealisasi(pasien.id)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                                            </button>
+                                                            <button onClick={handleCancelEditRealisasi} className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors" title="Batal">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                            </button>
+                                                        </div>
                                                     ) : (
                                                         <div
-                                                            className={`font-medium ${
+                                                            className={`font-medium cursor-pointer hover:bg-slate-100 p-1.5 rounded -ml-1 flex items-center justify-between group/realisasi transition-colors ${
                                                                 pasien.tanggal_realisasi
                                                                     ? 'text-emerald-700'
                                                                     : 'text-slate-400 italic'
                                                             }`}
+                                                            onClick={(e) => { e.stopPropagation(); handleEditRealisasi(pasien); }}
+                                                            title="Klik untuk mencatat realisasi pengambilan obat"
                                                         >
-                                                            {pasien.tanggal_realisasi
-                                                                ? formatTanggal(
-                                                                      pasien.tanggal_realisasi
-                                                                  )
-                                                                : 'Belum diambil'}
+                                                            <span>
+                                                                {pasien.tanggal_realisasi
+                                                                    ? formatTanggal(
+                                                                          pasien.tanggal_realisasi
+                                                                      )
+                                                                    : 'Belum diambil'}
+                                                            </span>
+                                                            <span className="opacity-0 group-hover/realisasi:opacity-100 text-teal-600 transition-opacity ml-2">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                            </span>
                                                         </div>
                                                     )}
                                                 </td>
@@ -838,20 +900,6 @@ export default function PasienIndex({
                                                 {/* 9. AKSI */}
                                                 <td className="px-5 py-4 text-center">
                                                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {pasien.status ===
-                                                            'Aktif' && (
-                                                            <button
-                                                                onClick={() =>
-                                                                    setRealisasiPasien(
-                                                                        pasien
-                                                                    )
-                                                                }
-                                                                className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
-                                                                title="Catat Realisasi Pengambilan"
-                                                            >
-                                                                <RefreshCw className="w-5 h-5" />
-                                                            </button>
-                                                        )}
 
                                                         <WhatsAppButton
                                                             pasien={
@@ -948,16 +996,7 @@ export default function PasienIndex({
                 />
             )}
 
-            {/* MODAL REALISASI */}
-            {realisasiPasien && (
-                <QuickRealisasiModal
-                    isOpen={!!realisasiPasien}
-                    onClose={() =>
-                        setRealisasiPasien(null)
-                    }
-                    pasien={realisasiPasien}
-                />
-            )}
+
 
             {/* MODAL DETAIL */}
             <PatientDetailModal

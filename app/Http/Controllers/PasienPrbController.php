@@ -112,20 +112,29 @@ class PasienPrbController extends Controller
         }
 
         /*
+         * Filter periode
+         * Hanya menyaring data, tidak mematikan logic Early Warning
+         */
+        if ($filterPeriode) {
+            $query->where(function ($q) use ($filterPeriode) {
+                $q->whereHas('riwayatPengambilanObat', function ($qRiwayat) use ($filterPeriode) {
+                    $qRiwayat->where('tanggal_pengambilan', 'like', $filterPeriode . '%')
+                             ->orWhere('jadwal_target', 'like', $filterPeriode . '%');
+                })->orWhere('tanggal_jadwal_berikutnya', 'like', $filterPeriode . '%');
+            });
+        }
+
+        /*
          * Hitung status kepatuhan
          * berdasarkan tanggal evaluasi.
          */
         $pasienAll = $query
             ->get()
             ->map(function ($pasien) use (
-                $tanggalEvaluasi,
-                $filterPeriode
+                $tanggalEvaluasi
             ) {
-                if ($filterPeriode) {
-                    $kepatuhan = $this->kepatuhanService->tentukanStatusKepatuhanPeriode($pasien, $filterPeriode);
-                } else {
-                    $kepatuhan = $this->kepatuhanService->tentukanStatusKepatuhan($pasien, $tanggalEvaluasi);
-                }
+                // Selalu hitung menggunakan logic utama, terlepas ada filter periode atau tidak
+                $kepatuhan = $this->kepatuhanService->tentukanStatusKepatuhan($pasien, $tanggalEvaluasi);
 
                 return array_merge(
                     $pasien->toArray(),
@@ -142,13 +151,13 @@ class PasienPrbController extends Controller
                         'early_warning' =>
                             $kepatuhan['early_warning'] ?? '-',
 
-                        'jadwal_target_aktif' => $filterPeriode 
+                        'jadwal_target_aktif' => array_key_exists('jadwal_target_aktif', $kepatuhan) 
                             ? $kepatuhan['jadwal_target_aktif'] 
-                            : (array_key_exists('jadwal_target_aktif', $kepatuhan) ? $kepatuhan['jadwal_target_aktif'] : $pasien->tanggal_jadwal_berikutnya?->toDateString()),
+                            : $pasien->tanggal_jadwal_berikutnya?->toDateString(),
 
-                        'tanggal_realisasi_aktif' => $filterPeriode
-                            ? $kepatuhan['tanggal_realisasi_aktif']
-                            : (array_key_exists('tanggal_realisasi_aktif', $kepatuhan) ? $kepatuhan['tanggal_realisasi_aktif'] : $pasien->tanggal_realisasi?->toDateString()),
+                        'tanggal_realisasi_aktif' => array_key_exists('tanggal_realisasi_aktif', $kepatuhan) 
+                            ? $kepatuhan['tanggal_realisasi_aktif'] 
+                            : $pasien->tanggal_realisasi?->toDateString(),
                     ]
                 );
             });
@@ -985,6 +994,7 @@ class PasienPrbController extends Controller
         $filterDiagnosis = $request->input('filter_diagnosis', '');
         $filterFktp = $request->input('filter_fktp', '');
         $filterEarlyWarning = $request->input('filter_early_warning', '');
+        $filterPeriode = $request->input('filter_periode', '');
 
         $query = PasienPrb::orderBy('kode_pasien', 'asc');
 
@@ -1009,11 +1019,21 @@ class PasienPrbController extends Controller
             $query->where('fktp_asal', $filterFktp);
         }
 
+        if ($filterPeriode) {
+            $query->where(function ($q) use ($filterPeriode) {
+                $q->whereHas('riwayatPengambilanObat', function ($qRiwayat) use ($filterPeriode) {
+                    $qRiwayat->where('tanggal_pengambilan', 'like', $filterPeriode . '%')
+                             ->orWhere('jadwal_target', 'like', $filterPeriode . '%');
+                })->orWhere('tanggal_jadwal_berikutnya', 'like', $filterPeriode . '%');
+            });
+        }
+
         $data = $query
             ->get()
             ->map(
                 function ($pasien) use (
-                    $tanggalEvaluasi
+                    $tanggalEvaluasi,
+                    $filterPeriode
                 ) {
                     $kepatuhan =
                         $this->kepatuhanService
@@ -1030,12 +1050,12 @@ class PasienPrbController extends Controller
                             )
                             ->first();
 
-                    $tglAmbil = $pasien->tanggal_realisasi 
-                        ? $pasien->tanggal_realisasi->format('d/m/Y') 
+                    $tglAmbil = (array_key_exists('tanggal_realisasi_aktif', $kepatuhan) && $kepatuhan['tanggal_realisasi_aktif'])
+                        ? \Carbon\Carbon::parse($kepatuhan['tanggal_realisasi_aktif'])->format('d/m/Y')
                         : 'Belum diambil';
 
-                    $jadwalAmbil = $pasien->tanggal_jadwal_berikutnya 
-                        ? $pasien->tanggal_jadwal_berikutnya->format('d/m/Y') 
+                    $jadwalAmbil = (array_key_exists('jadwal_target_aktif', $kepatuhan) && $kepatuhan['jadwal_target_aktif'])
+                        ? \Carbon\Carbon::parse($kepatuhan['jadwal_target_aktif'])->format('d/m/Y')
                         : '-';
 
                     $tindakLanjut = $lastTindakLanjut
@@ -1045,12 +1065,13 @@ class PasienPrbController extends Controller
                     return [
                         'Kode Pasien' => $pasien->kode_pasien,
                         'Nama Pasien' => $pasien->nama_pasien,
-                        'FKTP' => $pasien->fktp_asal,
+                        'Nama FKTP' => $pasien->fktp_asal,
                         'Diagnosis' => is_array($pasien->diagnosis_prb) ? implode(', ', $pasien->diagnosis_prb) : $pasien->diagnosis_prb,
-                        'Jadwal Ambil' => $jadwalAmbil,
-                        'Tgl Ambil' => $tglAmbil,
+                        'Periode Laporan' => $filterPeriode ? \Carbon\Carbon::parse($filterPeriode . '-01')->translatedFormat('F Y') : 'Semua Periode',
+                        'Jadwal Ambil Obat' => $jadwalAmbil,
+                        'Tanggal Ambil Obat' => $tglAmbil,
+                        'Status Kepatuhan' => $kepatuhan['status'],
                         'Early Warning' => $kepatuhan['early_warning'] ?? '-',
-                        'Status' => $kepatuhan['status'],
                         'Keterangan' => $kepatuhan['keterangan'],
                         'Tindak Lanjut' => $tindakLanjut,
                     ];
@@ -1058,7 +1079,7 @@ class PasienPrbController extends Controller
             );
 
         if ($filterKepatuhan) {
-            $data = $data->filter(fn($p) => $p['Status'] === $filterKepatuhan)->values();
+            $data = $data->filter(fn($p) => $p['Status Kepatuhan'] === $filterKepatuhan)->values();
         }
 
         if ($filterEarlyWarning) {

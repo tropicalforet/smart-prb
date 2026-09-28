@@ -18,6 +18,7 @@ interface AppLayoutProps {
 const navItems = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Data Pasien', href: '/pasien', icon: Users },
+    { name: 'Rekap Kepatuhan', href: '/rekap', icon: Activity },
 ];
 
 export default function AppLayout({ children, title }: AppLayoutProps) {

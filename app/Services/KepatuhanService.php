@@ -66,7 +66,7 @@ class KepatuhanService
         if ($pasien->status === 'Pasif') {
             return [
                 'status' => 'Pasif',
-                'early_warning' => 'Abu-abu',
+                'early_warning' => 'Pasif',
                 'selisih_hari' => 0,
                 'keterangan' => $pasien->alasan_pasif ?? 'Dikeluarkan dari pemantauan aktif',
                 'tindakan' => '-',
@@ -85,7 +85,7 @@ class KepatuhanService
         if (!$jadwalAktif) {
             return [
                 'status' => 'Belum Ada Jadwal',
-                'early_warning' => 'Abu-abu',
+                'early_warning' => 'Pasif',
                 'selisih_hari' => 0,
                 'keterangan' => 'Belum ada jadwal pengambilan obat yang dapat dinilai',
                 'tindakan' => '-',
@@ -115,7 +115,7 @@ class KepatuhanService
             $selisihRealisasi = (int) $jadwalAktif->diffInDays($realisasiSiklusAktif, false);
             return [
                 'status' => 'Patuh',
-                'early_warning' => 'Hijau - Patuh',
+                'early_warning' => 'Patuh',
                 'selisih_hari' => $selisihRealisasi,
                 'keterangan' => 'Pengambilan obat dilakukan tepat dalam masa toleransi',
                 'tindakan' => 'Tidak perlu tindak lanjut',
@@ -126,9 +126,22 @@ class KepatuhanService
 
         // BELUM MENGAMBIL: KONDISI 1: Hari ini < (jadwal - 3 hari)
         if ($evaluasi->lt($batasAwalToleransi)) {
+            $riwayatTerakhir = $pasien->riwayatPengambilanObat->sortByDesc('created_at')->first();
+            if ($riwayatTerakhir && $riwayatTerakhir->jadwal_target) {
+                return [
+                    'status' => $riwayatTerakhir->status_kepatuhan,
+                    'early_warning' => 'Belum memasuki jadwal', // Selalu hitung thd jadwal berikutnya!
+                    'selisih_hari' => $riwayatTerakhir->selisih_hari,
+                    'keterangan' => 'Pengambilan obat siklus sebelumnya telah direalisasikan.',
+                    'tindakan' => 'Belum perlu tindakan, bisa dilayani',
+                    'jadwal_target_aktif' => $jadwalAktif->toDateString(),
+                    'tanggal_realisasi_aktif' => Carbon::parse($riwayatTerakhir->tanggal_pengambilan)->toDateString(),
+                ];
+            }
+
             return [
                 'status' => 'Belum Jatuh Tempo',
-                'early_warning' => 'Biru - Belum memasuki jadwal',
+                'early_warning' => 'Belum memasuki jadwal',
                 'selisih_hari' => $selisihEvaluasi,
                 'keterangan' => 'Belum memasuki periode pengambilan',
                 'tindakan' => 'Belum perlu tindakan, bisa dilayani',
@@ -140,15 +153,15 @@ class KepatuhanService
         // BELUM MENGAMBIL: KONDISI 2: Hari ini berada pada H-3 s.d H+3
         if ($evaluasi->lte($batasAkhirToleransi)) {
             if ($evaluasi->lt($jadwalAktif)) {
-                $earlyWarning = 'Kuning - Jadwal mendekat';
+                $earlyWarning = 'Jadwal Mendekat';
                 $tindakan = 'Reminder kepada pasien';
                 $keterangan = 'Jadwal pengambilan mendekat';
             } elseif ($evaluasi->equalTo($jadwalAktif)) {
-                $earlyWarning = 'Oranye - Jatuh tempo';
+                $earlyWarning = 'Jatuh Tempo';
                 $tindakan = 'Reminder lebih aktif';
                 $keterangan = 'Hari ini merupakan tanggal pengambilan obat';
             } else {
-                $earlyWarning = 'Oranye - Belum mengambil, masih toleransi';
+                $earlyWarning = 'Masih Toleransi';
                 $tindakan = 'Hubungi pasien dan informasikan FKTP';
                 $keterangan = 'Belum mengambil obat, masih dalam batas toleransi sampai H+3';
             }
@@ -167,7 +180,7 @@ class KepatuhanService
         // BELUM MENGAMBIL / LEWAT BATAS: KONDISI 3: Hari ini > (jadwal + 3 hari)
         return [
             'status' => 'Tidak Patuh',
-            'early_warning' => 'Merah - Tidak patuh/Overdue',
+            'early_warning' => 'Tidak Patuh/Overdue',
             'selisih_hari' => $selisihEvaluasi,
             'keterangan' => 'Terlambat ' . $selisihEvaluasi . ' hari, melewati batas toleransi H+3',
             'tindakan' => 'Segera dilaporkan kepada FKTP untuk ditindaklanjuti',
@@ -198,9 +211,10 @@ class KepatuhanService
             ->first();
 
         if ($riwayat) {
+            $ew = $riwayat->status_kepatuhan === 'Patuh' ? 'Patuh' : 'Tidak Patuh/Overdue';
             return [
                 'status' => $riwayat->status_kepatuhan,
-                'early_warning' => '-', // Sesuai aturan: Jangan mencampurkan EW dengan status historical
+                'early_warning' => $ew,
                 'selisih_hari' => $riwayat->selisih_hari,
                 'keterangan' => 'Berdasarkan riwayat transaksi bulan ini',
                 'jadwal_target_aktif' => $riwayat->jadwal_target ? $riwayat->jadwal_target->toDateString() : null,
@@ -222,16 +236,27 @@ class KepatuhanService
 
             $status = 'Dalam Toleransi';
             $selisih = (int) $jadwalAktif->diffInDays($hariIni, false);
+            $ew = 'Masih Toleransi';
 
             if ($hariIni->lt($batasAwal)) {
                 $status = 'Belum Jatuh Tempo';
+                $ew = 'Belum memasuki jadwal';
             } elseif ($hariIni->gt($batasAkhir)) {
                 $status = 'Tidak Patuh';
+                $ew = 'Tidak Patuh/Overdue';
+            } else {
+                if ($hariIni->lt($jadwalAktif)) {
+                    $ew = 'Jadwal Mendekat';
+                } elseif ($hariIni->equalTo($jadwalAktif)) {
+                    $ew = 'Jatuh Tempo';
+                } else {
+                    $ew = 'Masih Toleransi';
+                }
             }
 
             return [
                 'status' => $status,
-                'early_warning' => '-', 
+                'early_warning' => $ew, 
                 'selisih_hari' => $selisih,
                 'keterangan' => 'Belum ada realisasi untuk siklus bulan ini',
                 'jadwal_target_aktif' => $jadwalAktif->toDateString(),

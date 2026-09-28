@@ -50,7 +50,7 @@ export function parseExcelFile(
                     workbook.Sheets[sheetName];
 
                 const jsonData =
-                    XLSX.utils.sheet_to_json(sheet, {
+                    XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
                         defval: '',
                     });
 

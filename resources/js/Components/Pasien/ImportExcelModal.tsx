@@ -41,7 +41,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
 
         setLoading(true);
         router.post('/pasien/import/batch', {
-            data: validData,
+            data: validData as any,
         }, {
             onSuccess: () => {
                 setLoading(false);
@@ -171,7 +171,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
                             <Button variant="ghost" onClick={onClose}>Batal</Button>
                             <Button onClick={handleUpload} isLoading={loading} disabled={validCount === 0} icon={<UploadCloud className="w-4 h-4"/>}>
-                                Unggah {validCount} Data ke Buffer
+                                Import {validCount} Data Valid ke Data Utama
                             </Button>
                         </div>
                     </div>

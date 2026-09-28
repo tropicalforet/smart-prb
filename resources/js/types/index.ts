@@ -130,6 +130,7 @@ export interface Filters {
     filter_kepatuhan: string;
     filter_diagnosis: string;
     filter_fktp?: string;
+    filter_periode?: string;
 }
 
 // Constants
