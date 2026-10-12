@@ -90,13 +90,13 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
             filterKepatuhan: 'Tidak Patuh',
         },
         {
-            title: 'Dalam Toleransi',
+            title: 'Belum Diambil',
             value: statistik.dalam_toleransi,
             subtitle: 'Rentang H-3 s.d. H+3',
             icon: Clock,
             gradient: 'from-amber-500 to-amber-600',
             shadowColor: 'shadow-amber-500/25',
-            filterKepatuhan: 'Dalam Toleransi',
+            filterKepatuhan: 'Belum Diambil',
         },
     ];
 

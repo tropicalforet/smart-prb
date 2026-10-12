@@ -21,6 +21,7 @@ interface RekapData {
     dalam_toleransi: number;
     tidak_patuh: number;
     pasif: number;
+    belum_jatuh_tempo: number;
 }
 
 interface Props {
@@ -30,6 +31,7 @@ interface Props {
         dalam_toleransi: number;
         tidak_patuh: number;
         pasif: number;
+        belum_jatuh_tempo: number;
     };
     rekapFktp: RekapData[];
     filters: {
@@ -72,8 +74,9 @@ export default function RekapIndex({
             'FKTP': r.fktp,
             'Total Pasien': r.total,
             'Patuh': r.patuh,
-            'Dalam Toleransi': r.dalam_toleransi,
+            'Belum Diambil': r.dalam_toleransi,
             'Tidak Patuh': r.tidak_patuh,
+            'Belum Jatuh Tempo': r.belum_jatuh_tempo,
             'Pasif': r.pasif
         }));
 
@@ -99,7 +102,7 @@ export default function RekapIndex({
             gradient: 'from-emerald-500 to-emerald-600',
         },
         {
-            title: 'Dalam Toleransi',
+            title: 'Belum Diambil',
             value: summary.dalam_toleransi,
             icon: Clock,
             gradient: 'from-amber-500 to-amber-600',
@@ -109,6 +112,12 @@ export default function RekapIndex({
             value: summary.tidak_patuh,
             icon: AlertTriangle,
             gradient: 'from-rose-500 to-rose-600',
+        },
+        {
+            title: 'Blm Jatuh Tempo',
+            value: summary.belum_jatuh_tempo,
+            icon: CalendarDays,
+            gradient: 'from-blue-400 to-blue-500',
         },
         {
             title: 'Pasif',
@@ -167,7 +176,7 @@ export default function RekapIndex({
                     >
                         <option value="">Semua Kepatuhan</option>
                         <option value="Patuh">Patuh</option>
-                        <option value="Dalam Toleransi">Dalam Toleransi</option>
+                        <option value="Belum Diambil">Belum Diambil</option>
                         <option value="Tidak Patuh">Tidak Patuh</option>
                         <option value="Belum Jatuh Tempo">Belum Jatuh Tempo</option>
                         <option value="Pasif">Pasif</option>
@@ -181,7 +190,7 @@ export default function RekapIndex({
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
                 {summaryCards.map((card, idx) => (
                     <motion.div
                         key={card.title}
@@ -211,6 +220,7 @@ export default function RekapIndex({
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-emerald-600">Patuh</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-amber-600">Dlm Toleransi</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-rose-600">Tidak Patuh</th>
+                                <th className="px-6 py-4 whitespace-nowrap text-right text-blue-500">Blm Jatuh Tempo</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right">Pasif</th>
                             </tr>
                         </thead>
@@ -222,12 +232,13 @@ export default function RekapIndex({
                                     <td className="px-6 py-4 text-right text-emerald-600 font-medium">{row.patuh}</td>
                                     <td className="px-6 py-4 text-right text-amber-600 font-medium">{row.dalam_toleransi}</td>
                                     <td className="px-6 py-4 text-right text-rose-600 font-medium">{row.tidak_patuh}</td>
+                                    <td className="px-6 py-4 text-right text-blue-500 font-medium">{row.belum_jatuh_tempo ?? 0}</td>
                                     <td className="px-6 py-4 text-right text-slate-500">{row.pasif}</td>
                                 </tr>
                             ))}
                             {rekapFktp.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         Tidak ada data rekap yang ditemukan.
                                     </td>
                                 </tr>

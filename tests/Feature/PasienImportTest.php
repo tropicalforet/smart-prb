@@ -55,6 +55,7 @@ class PasienImportTest extends TestCase
         $response->assertRedirect(route('pasien.index'));
         $response->assertSessionHas('importResult', [
             'baru' => 1,
+            'diperbarui' => 0,
             'duplikat' => 1,
             'invalid' => 1,
         ]);
@@ -121,7 +122,8 @@ class PasienImportTest extends TestCase
         ]);
 
         $response->assertSessionHas('importResult', [
-            'baru' => 1,
+            'baru' => 0,
+            'diperbarui' => 1,
             'duplikat' => 0,
             'invalid' => 0,
         ]);

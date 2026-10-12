@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { PasienPRB, DIAGNOSIS_OPTIONS } from '@/types';
+import { PasienPRB } from '@/types';
 
 export interface ImportRow {
     no_faktur?: string;
@@ -11,11 +11,12 @@ export interface ImportRow {
     diagnosis_prb: string[];
     tanggal_mulai_prb: string;
     tanggal_berobat?: string;
-    tanggal_pengambilan_terakhir?: string;
+    tanggal_pengambilan?: string;
 }
 
 export interface ValidationResult {
     row: number;
+    sheet: string;          // nama worksheet sumber
     data: ImportRow;
     valid: boolean;
     errors: string[];
@@ -23,8 +24,14 @@ export interface ValidationResult {
 
 /**
  * =========================================================
- * PARSE FILE EXCEL
+ * PARSE FILE EXCEL — MULTI-SHEET
  * =========================================================
+ *
+ * Membaca SEMUA worksheet dalam satu file Excel.
+ * Setiap baris diberi field tambahan `_sheet_name` agar
+ * preview dan pelaporan dapat menampilkan sumber sheet.
+ *
+ * Sheet kosong (tanpa baris data) dilewati secara diam-diam.
  */
 export function parseExcelFile(
     file: File
@@ -43,18 +50,24 @@ export function parseExcelFile(
                     cellDates: true,
                 });
 
-                const sheetName =
-                    workbook.SheetNames[0];
+                const allRows: Record<string, any>[] = [];
 
-                const sheet =
-                    workbook.Sheets[sheetName];
-
-                const jsonData =
-                    XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
+                for (const sheetName of workbook.SheetNames) {
+                    const sheet = workbook.Sheets[sheetName];
+                    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
                         defval: '',
                     });
 
-                resolve(jsonData);
+                    // Lewati sheet kosong
+                    if (!rows || rows.length === 0) continue;
+
+                    // Tambahkan _sheet_name ke setiap baris
+                    for (const row of rows) {
+                        allRows.push({ ...row, _sheet_name: sheetName });
+                    }
+                }
+
+                resolve(allRows);
             } catch (err) {
                 reject(
                     new Error(
@@ -65,11 +78,7 @@ export function parseExcelFile(
         };
 
         reader.onerror = () =>
-            reject(
-                new Error(
-                    'Gagal membaca file.'
-                )
-            );
+            reject(new Error('Gagal membaca file.'));
 
         reader.readAsArrayBuffer(file);
     });
@@ -92,7 +101,7 @@ export function validateImportData(
                     row['tanggal_mulai_prb']
             );
 
-        const tanggalTerakhir =
+        const tanggalPengambilan =
             formatDateValue(
                 row['Tanggal Pengambilan'] ??
                     row['tanggal_pengambilan'] ??
@@ -168,8 +177,8 @@ export function validateImportData(
             tanggal_berobat:
                 tanggalBerobat,
 
-            tanggal_pengambilan_terakhir:
-                tanggalTerakhir ||
+            tanggal_pengambilan:
+                tanggalPengambilan ||
                 undefined,
         };
 
@@ -213,15 +222,13 @@ export function validateImportData(
          * =====================================================
          * VALIDASI DIAGNOSIS
          * =====================================================
+         * Diagnosis PRB pada import Excel bersifat BEBAS — tidak dibatasi
+         * oleh DIAGNOSIS_OPTIONS. Data sumber apotek dapat menggunakan
+         * nama penyakit yang berbeda (mis. "Jantung Koroner", "Penyakit Ginjal Kronis").
+         * Hanya pastikan diagnosis tidak kosong.
          */
-
-        if (mapped.diagnosis_prb && mapped.diagnosis_prb.length > 0) {
-            const invalidDiagnoses = mapped.diagnosis_prb.filter(d => !DIAGNOSIS_OPTIONS.includes(d as any));
-            if (invalidDiagnoses.length > 0) {
-                errors.push(
-                    `Diagnosis "${invalidDiagnoses.join(', ')}" tidak valid. Pilihan: ${DIAGNOSIS_OPTIONS.join(', ')}`
-                );
-            }
+        if (!mapped.diagnosis_prb || mapped.diagnosis_prb.length === 0) {
+            errors.push('Diagnosis PRB wajib diisi');
         }
 
         /*
@@ -242,28 +249,28 @@ export function validateImportData(
         }
 
         if (
-            mapped.tanggal_pengambilan_terakhir &&
+            mapped.tanggal_pengambilan &&
             !isValidDateString(
-                mapped.tanggal_pengambilan_terakhir
+                mapped.tanggal_pengambilan
             )
         ) {
             errors.push(
-                'Pengambilan Terakhir tidak valid. Gunakan format DD-MM-YYYY.'
+                'Tanggal Pengambilan tidak valid. Gunakan format DD-MM-YYYY.'
             );
         }
 
         /*
-         * Pengambilan terakhir tidak boleh
+         * Tanggal Pengambilan tidak boleh
          * lebih awal dari tanggal mulai PRB.
          */
         if (
             mapped.tanggal_mulai_prb &&
-            mapped.tanggal_pengambilan_terakhir &&
+            mapped.tanggal_pengambilan &&
             isValidDateString(
                 mapped.tanggal_mulai_prb
             ) &&
             isValidDateString(
-                mapped.tanggal_pengambilan_terakhir
+                mapped.tanggal_pengambilan
             )
         ) {
             const mulai =
@@ -271,20 +278,21 @@ export function validateImportData(
                     mapped.tanggal_mulai_prb
                 );
 
-            const terakhir =
+            const pengambilan =
                 new Date(
-                    mapped.tanggal_pengambilan_terakhir
+                    mapped.tanggal_pengambilan
                 );
 
-            if (terakhir < mulai) {
+            if (pengambilan < mulai) {
                 errors.push(
-                    'Pengambilan Terakhir tidak boleh lebih awal dari Tanggal Mulai PRB.'
+                    'Tanggal Pengambilan tidak boleh lebih awal dari Tanggal Mulai PRB.'
                 );
             }
         }
 
         return {
             row: idx + 1,
+            sheet: String(row['_sheet_name'] ?? 'Sheet1'),
             data: mapped,
             valid: errors.length === 0,
             errors,

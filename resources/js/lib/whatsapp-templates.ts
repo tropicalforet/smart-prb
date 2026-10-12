@@ -22,6 +22,30 @@ function hitungSelisihHari(jadwal: string, evaluasi: string): number {
     return diff;
 }
 
+// ── Template sederhana untuk reminder (Halaman Reminder) ───────────────────
+// Sesuai arahan Bu Lente: bahasa sederhana, ramah lansia, tidak ada istilah teknis.
+// nama dan jadwal diisi otomatis dari data pasien.
+export function getReminderTemplate(namaPasien: string, jadwal: string | null): string {
+    const BULAN = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    let jadwalFmt = '-';
+    if (jadwal) {
+        const d = new Date(jadwal);
+        if (!isNaN(d.getTime())) {
+            jadwalFmt = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+        }
+    }
+
+    return `Halo Bapak/Ibu ${namaPasien}.
+
+Kami mengingatkan bahwa jadwal pengambilan obat Bapak/Ibu adalah ${jadwalFmt}.
+
+Mohon datang ke apotek untuk mengambil obat sesuai jadwal.
+
+Jangan lupa membawa Kartu BPJS dan Surat Rujuk Balik.
+
+Terima kasih.`;
+}
+
 export function getWhatsAppTemplate(ctx: WhatsAppContext): string {
     const { pasien, tanggalEvaluasi } = ctx;
     const nama = pasien.nama_pasien;
@@ -29,7 +53,7 @@ export function getWhatsAppTemplate(ctx: WhatsAppContext): string {
     const fktp = pasien.fktp_asal;
 
     if (!jadwal) {
-        return `Yth. Bpk/Ibu ${nama},\n\nKami dari apotek mitra BPJS Kesehatan ingin menginformasikan mengenai program Rujuk Balik (PRB) Anda.\n\nSilakan menghubungi kami untuk informasi jadwal pengambilan obat.\n\nTerima kasih. 🙏`;
+        return `Halo Bapak/Ibu ${nama}.\n\nKami dari apotek ingin menginformasikan mengenai jadwal pengambilan obat program PRB Anda.\n\nSilakan menghubungi kami untuk informasi lebih lanjut.\n\nTerima kasih.`;
     }
 
     const evaluasi = tanggalEvaluasi || new Date().toISOString().split('T')[0];
@@ -38,21 +62,21 @@ export function getWhatsAppTemplate(ctx: WhatsAppContext): string {
 
     // H-3 atau sebelumnya (belum jatuh tempo)
     if (selisih < 0) {
-        return `Yth. Bpk/Ibu ${nama},\n\nKami mengingatkan bahwa jadwal pengambilan obat PRB Anda adalah *${jadwalFormatted}*.\n\nSilakan datang ke apotek kami paling cepat 3 hari sebelum jadwal untuk mengambil obat rutin Anda.\n\nJangan lupa membawa:\n📋 Kartu BPJS\n📋 Surat Rujuk Balik (SRB)\n📋 Resep dari dokter/FKTP\n\nTerima kasih atas kepatuhan Anda. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
+        return `Halo Bapak/Ibu ${nama}.\n\nKami mengingatkan bahwa jadwal pengambilan obat Bapak/Ibu adalah *${jadwalFormatted}*.\n\nMohon datang ke apotek untuk mengambil obat sesuai jadwal.\n\nJangan lupa membawa:\n📋 Kartu BPJS\n📋 Surat Rujuk Balik (SRB)\n\nTerima kasih. 🙏`;
     }
 
     // Hari H (jatuh tempo hari ini)
     if (selisih === 0) {
-        return `Yth. Bpk/Ibu ${nama},\n\n*HARI INI (${jadwalFormatted})* adalah jadwal pengambilan obat PRB Anda.\n\nSilakan segera datang ke apotek mitra kami untuk mengambil obat rutin Anda.\n\nJangan lupa membawa:\n📋 Kartu BPJS\n📋 Surat Rujuk Balik (SRB)\n\nTerima kasih. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
+        return `Halo Bapak/Ibu ${nama}.\n\n*Hari ini (${jadwalFormatted})* adalah jadwal pengambilan obat Bapak/Ibu.\n\nMohon segera datang ke apotek untuk mengambil obat.\n\nJangan lupa membawa Kartu BPJS.\n\nTerima kasih. 🙏`;
     }
 
     // H+1 s.d. H+3 (dalam toleransi)
     if (selisih >= 1 && selisih <= 3) {
-        return `Yth. Bpk/Ibu ${nama},\n\nJadwal pengambilan obat PRB Anda sudah lewat *${selisih} hari* (jadwal: ${jadwalFormatted}).\n\n⚠️ Anda masih dalam *batas toleransi* (maks. 3 hari). Mohon segera datang ke apotek kami untuk mengambil obat.\n\nKepatuhan minum obat sangat penting untuk pengendalian kondisi kesehatan Anda.\n\nTerima kasih. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
+        return `Halo Bapak/Ibu ${nama}.\n\nJadwal pengambilan obat Bapak/Ibu sudah lewat ${selisih} hari (jadwal: ${jadwalFormatted}).\n\nMohon segera datang ke apotek untuk mengambil obat.\n\nTerima kasih. 🙏`;
     }
 
-    // Lewat H+3 (overdue / tidak patuh)
-    return `Yth. Bpk/Ibu ${nama},\n\n🔴 Pengambilan obat PRB Anda sudah *terlambat ${selisih} hari* dari jadwal (${jadwalFormatted}).\n\nKami sangat mengimbau Anda untuk:\n1️⃣ Segera datang ke apotek untuk mengambil obat\n2️⃣ Atau menghubungi *${fktp}* untuk konsultasi lebih lanjut\n\nKepatuhan pengobatan kronis sangat penting untuk mencegah komplikasi.\n\nMohon hubungi kami jika ada kendala. 🙏\n\n_Pesan otomatis dari SMART PRB_`;
+    // Lewat H+3
+    return `Halo Bapak/Ibu ${nama}.\n\nKami ingin mengingatkan bahwa pengambilan obat Bapak/Ibu sudah terlambat dari jadwal (${jadwalFormatted}).\n\nMohon segera datang ke apotek atau hubungi ${fktp} untuk bantuan lebih lanjut.\n\nTerima kasih. 🙏`;
 }
 
 export function generateWhatsAppLink(noWa: string, message: string): string {

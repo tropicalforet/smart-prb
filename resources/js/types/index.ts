@@ -23,6 +23,8 @@ export interface PasienPRB {
     keterangan_kepatuhan?: string;
     early_warning?: string;
     jadwal_target_aktif?: string;
+    tanggal_realisasi_aktif?: string | null;  // tanggal realisasi siklus aktif/periode
+    riwayat_id_aktif?: string | null;          // UUID riwayat siklus aktif, null jika belum ada
     // Relations
     riwayat_pengambilan_obat?: RiwayatPengambilanObat[];
     riwayat_tindak_lanjut?: RiwayatTindakLanjut[];
@@ -43,7 +45,7 @@ export type DiagnosisPRB =
 export type StatusKepatuhan =
     | 'Patuh'
     | 'Tidak Patuh'
-    | 'Dalam Toleransi'
+    | 'Belum Diambil'
     | 'Belum Jatuh Tempo'
     | 'Belum Ada Jadwal'
     | 'Pasif'
@@ -168,7 +170,7 @@ export const ALASAN_PASIF_OPTIONS: AlasanPasif[] = [
 export const STATUS_KEPATUHAN_CONFIG: Record<StatusKepatuhan, { color: string; bgColor: string; borderColor: string; icon: string }> = {
     'Patuh': { color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200', icon: '✓' },
     'Tidak Patuh': { color: 'text-rose-700', bgColor: 'bg-rose-50', borderColor: 'border-rose-200', icon: '✗' },
-    'Dalam Toleransi': { color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', icon: '⏳' },
+    'Belum Diambil': { color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', icon: '⏳' },
     'Belum Jatuh Tempo': { color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: '📅' },
     'Belum Ada Jadwal': { color: 'text-slate-500', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', icon: '—' },
     'Pasif': { color: 'text-slate-500', bgColor: 'bg-slate-100', borderColor: 'border-slate-200', icon: '⏸' },

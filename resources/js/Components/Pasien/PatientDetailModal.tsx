@@ -8,6 +8,19 @@ import {
     User, Phone, FileText, Activity, Calendar,
     History, MessageSquarePlus, Stethoscope, Save
 } from 'lucide-react';
+
+// Format tanggal: DD/MM/YYYY
+const BULAN_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+function formatTglHistori(tgl: string | null | undefined): string {
+    if (!tgl) return '-';
+    const d = new Date(tgl);
+    if (isNaN(d.getTime())) return '-';
+    const hari  = String(d.getDate()).padStart(2, '0');
+    const bulan = String(d.getMonth() + 1).padStart(2, '0');
+    const tahun = d.getFullYear();
+    return `${hari}/${bulan}/${tahun}`;
+}
 import { WhatsAppButton } from './WhatsAppButton';
 
 interface Props {
@@ -15,23 +28,74 @@ interface Props {
     isOpen: boolean;
     onClose: () => void;
     tanggalEvaluasi: string;
+    filterPeriode?: string;
 }
 
-export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi }: Props) {
+export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi, filterPeriode }: Props) {
     const [pasien, setPasien] = useState<PasienPRB | null>(null);
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'profil' | 'riwayat' | 'tindak_lanjut'>('profil');
 
-    // Form state
+    // Form state — tindak lanjut
     const [tindakan, setTindakan] = useState('');
     const [catatan, setCatatan] = useState('');
     const [tanggalRealisasi, setTanggalRealisasi] = useState(new Date().toISOString().split('T')[0]);
     const [submitting, setSubmitting] = useState(false);
 
+    // State edit histori per riwayat
+    const [editingRiwayatId, setEditingRiwayatId] = useState<string | null>(null);
+    const [editingRiwayatTanggal, setEditingRiwayatTanggal] = useState('');
+    const [savingRiwayat, setSavingRiwayat] = useState(false);
+
+    // Helper: refresh data pasien setelah perubahan
+    const refreshPasien = () => {
+        if (!pasienId) return;
+        const params = new URLSearchParams({ tanggal_evaluasi: tanggalEvaluasi });
+        if (filterPeriode) params.set('filter_periode', filterPeriode);
+        fetch(`/pasien/${pasienId}?${params.toString()}`, {
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(res => res.json())
+            .then(data => setPasien(data));
+    };
+
+    const handleEditRiwayat = (riwayat: import('@/types').RiwayatPengambilanObat) => {
+        setEditingRiwayatId(riwayat.id);
+        setEditingRiwayatTanggal(
+            typeof riwayat.tanggal_pengambilan === 'string'
+                ? riwayat.tanggal_pengambilan.split('T')[0]
+                : new Date(riwayat.tanggal_pengambilan).toISOString().split('T')[0]
+        );
+    };
+
+    const handleSaveRiwayat = (riwayatId: string) => {
+        if (!pasienId) return;
+        setSavingRiwayat(true);
+        router.put(`/pasien/${pasienId}/realisasi`, {
+            riwayat_id:        riwayatId,
+            tanggal_realisasi: editingRiwayatTanggal,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setSavingRiwayat(false);
+                setEditingRiwayatId(null);
+                refreshPasien();
+            },
+            onError: () => {
+                setSavingRiwayat(false);
+            },
+        });
+    };
+
     useEffect(() => {
         if (isOpen && pasienId) {
             setLoading(true);
-            fetch(`/pasien/${pasienId}?tanggal_evaluasi=${tanggalEvaluasi}`, {
+            // Sertakan filter_periode agar server mengevaluasi dalam konteks
+            // periode yang sedang dilihat user (bukan selalu siklus aktif terbaru).
+            const params = new URLSearchParams({ tanggal_evaluasi: tanggalEvaluasi });
+            if (filterPeriode) params.set('filter_periode', filterPeriode);
+
+            fetch(`/pasien/${pasienId}?${params.toString()}`, {
                 headers: { 'Accept': 'application/json' }
             })
                 .then(res => res.json())
@@ -44,7 +108,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi 
             setPasien(null);
             setActiveTab('profil');
         }
-    }, [isOpen, pasienId, tanggalEvaluasi]);
+    }, [isOpen, pasienId, tanggalEvaluasi, filterPeriode]);
 
     const handleTindakLanjutSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -61,12 +125,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi 
                 setSubmitting(false);
                 setTindakan('');
                 setCatatan('');
-                // Fetch fresh data
-                fetch(`/pasien/${pasienId}?tanggal_evaluasi=${tanggalEvaluasi}`, {
-                    headers: { 'Accept': 'application/json' }
-                })
-                    .then(res => res.json())
-                    .then(data => setPasien(data));
+                refreshPasien();
             },
             onError: () => setSubmitting(false),
         });
@@ -234,36 +293,110 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi 
                             <div className="animate-fade-in-up">
                                 {pasien.riwayat_pengambilan_obat && pasien.riwayat_pengambilan_obat.length > 0 ? (
                                     <div className="relative border-l border-slate-200 ml-3 space-y-6">
-                                        {pasien.riwayat_pengambilan_obat.map((riwayat) => (
+                                        {(() => {
+                                            // Deduplicate: satu No. Faktur = satu transaksi
+                                            const seen = new Set<string>();
+                                            const unique = pasien.riwayat_pengambilan_obat.filter((r) => {
+                                                const key = r.no_faktur
+                                                    ? `faktur_${r.no_faktur}`
+                                                    : `bpjs_${r.tanggal_berobat || r.tanggal_pengambilan}`;
+                                                if (seen.has(key)) return false;
+                                                seen.add(key);
+                                                return true;
+                                            });
+                                             return unique.map((riwayat) => {
+                                                const selisih = riwayat.selisih_hari ?? 0;
+
+                                                // selisih_hari: positif = terlambat, negatif = lebih awal, 0 = tepat waktu
+                                                let selisihText: string;
+                                                if (selisih > 0) {
+                                                    selisihText = `Terlambat ${selisih} hari`;
+                                                } else if (selisih < 0) {
+                                                    selisihText = `${Math.abs(selisih)} hari lebih awal`;
+                                                } else {
+                                                    selisihText = 'Tepat waktu';
+                                                }
+
+                                                const isPatuh = riwayat.status_kepatuhan === 'Patuh';
+                                                const dotColor = isPatuh ? 'bg-emerald-500' : 'bg-rose-500';
+                                                const badgeBg  = isPatuh
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-rose-100 text-rose-700';
+                                                const selisihColor = isPatuh
+                                                    ? 'text-emerald-600'
+                                                    : selisih < 0
+                                                        ? 'text-amber-600'   // lebih awal (tidak patuh)
+                                                        : 'text-rose-600';   // terlambat (tidak patuh)
+
+                                                return (
                                             <div key={riwayat.id} className="relative pl-6">
-                                                <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 border-white ${riwayat.status_kepatuhan === 'Patuh' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                                <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 border-white ${dotColor}`} />
                                                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-4">
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <span className="font-semibold text-slate-800">
-                                                            {new Date(riwayat.tanggal_pengambilan).toLocaleDateString('id-ID', { dateStyle: 'medium' })}
-                                                        </span>
-                                                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${riwayat.status_kepatuhan === 'Patuh' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                                        {editingRiwayatId === riwayat.id ? (
+                                                            <div className="flex items-center gap-1.5 flex-1 mr-2">
+                                                                <input
+                                                                    type="date"
+                                                                    value={editingRiwayatTanggal}
+                                                                    onChange={e => setEditingRiwayatTanggal(e.target.value)}
+                                                                    className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
+                                                                />
+                                                                <button
+                                                                    disabled={savingRiwayat}
+                                                                    onClick={() => handleSaveRiwayat(riwayat.id)}
+                                                                    className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors disabled:opacity-50"
+                                                                    title="Simpan"
+                                                                >
+                                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEditingRiwayatId(null)}
+                                                                    className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors"
+                                                                    title="Batal"
+                                                                >
+                                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 flex-1">
+                                                                <span className="font-semibold text-slate-800">
+                                                                    {formatTglHistori(riwayat.tanggal_pengambilan)}
+                                                                </span>
+                                                                {riwayat.no_faktur?.startsWith('REALISASI-') && (
+                                                                    <button
+                                                                        onClick={() => handleEditRiwayat(riwayat)}
+                                                                        className="text-slate-400 hover:text-teal-600 transition-colors"
+                                                                        title="Edit tanggal kedatangan"
+                                                                    >
+                                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badgeBg} shrink-0`}>
                                                             {riwayat.status_kepatuhan}
                                                         </span>
                                                     </div>
-                                                    <div className="text-sm text-slate-500">
+                                                    <div className="text-sm text-slate-500 space-y-0.5">
                                                         {riwayat.no_faktur && (
-                                                            <div className="text-xs font-mono text-slate-600 mb-1">
+                                                            <div className="text-xs font-mono text-slate-600">
                                                                 No. Faktur: <span className="font-semibold text-slate-700">{riwayat.no_faktur}</span>
                                                             </div>
                                                         )}
-                                                        {riwayat.tanggal_berobat && (
-                                                            <div className="text-xs text-slate-600 mb-1">
-                                                                Tgl Berobat: {new Date(riwayat.tanggal_berobat).toLocaleDateString('id-ID')}
+                                                        {riwayat.jadwal_target && (
+                                                            <div className="text-xs text-slate-600">
+                                                                Jadwal Ambil Obat: {formatTglHistori(riwayat.jadwal_target)}
                                                             </div>
                                                         )}
-                                                        Jadwal Target: {new Date(riwayat.jadwal_target).toLocaleDateString('id-ID')}
-                                                        <br />
-                                                        {riwayat.selisih_hari > 0 ? `Terlambat ${riwayat.selisih_hari} hari` : (riwayat.selisih_hari < 0 ? `Lebih cepat ${Math.abs(riwayat.selisih_hari)} hari` : 'Tepat waktu')}
+                                                        <div className={`text-xs font-medium ${selisihColor}`}>
+                                                            {selisihText}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                                );
+                                            });
+                                        })()}
                                     </div>
                                 ) : (
                                     <div className="text-center py-10">

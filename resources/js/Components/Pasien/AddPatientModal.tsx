@@ -12,6 +12,7 @@ interface Props {
 
 export function AddPatientModal({ isOpen, onClose }: Props) {
     const [loading, setLoading] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [formData, setFormData] = useState({
         nama_pasien: '',
         no_kartu_bpjs: '',
@@ -61,6 +62,7 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        setErrors({}); // reset error sebelum submit baru
 
         // Rapikan spasi berlebih
         const cleanName = formData.nama_pasien.replace(/\s+/g, ' ').trim();
@@ -79,10 +81,17 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
         router.post('/pasien', payload, {
             onSuccess: () => {
                 setLoading(false);
+                setErrors({});
                 onClose();
             },
-            onError: () => {
+            onError: (errs) => {
                 setLoading(false);
+                // Tampilkan error validasi dari server (mis. BPJS sudah terdaftar)
+                const mapped: Record<string, string> = {};
+                Object.entries(errs).forEach(([k, v]) => {
+                    mapped[k] = Array.isArray(v) ? v[0] : String(v);
+                });
+                setErrors(mapped);
             },
             preserveScroll: true,
         });
@@ -91,6 +100,17 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Tambah Pasien PRB" maxWidth="2xl">
             <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Error summary dari server */}
+                {Object.keys(errors).length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700 space-y-1">
+                        {Object.entries(errors).map(([field, msg]) => (
+                            <div key={field} className="flex items-start gap-1.5">
+                                <span className="font-medium shrink-0">⚠</span>
+                                <span>{msg}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Data Pribadi */}
                     <div className="space-y-4">
@@ -123,10 +143,13 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                                 maxLength={13}
                                 inputMode="numeric"
                                 title="No. Kartu BPJS harus terdiri dari tepat 13 digit angka."
-                                className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
+                                className={`w-full rounded-lg text-sm focus:border-teal-500 focus:ring-teal-500 ${errors.no_kartu_bpjs ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`}
                             />
                             {formData.no_kartu_bpjs.length > 0 && formData.no_kartu_bpjs.length < 13 && (
                                 <p className="text-xs text-rose-500 mt-1">No. Kartu BPJS harus terdiri dari tepat 13 digit angka.</p>
+                            )}
+                            {errors.no_kartu_bpjs && (
+                                <p className="text-xs text-rose-600 mt-1 font-medium">⚠ {errors.no_kartu_bpjs}</p>
                             )}
                         </div>
                         
@@ -214,7 +237,7 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                                     className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
                                 />
                                 {!formData.tanggal_pengambilan_terakhir && formData.tanggal_mulai_prb && (
-                                    <p className="text-[10px] text-teal-600 mt-1">PRB Baru — Jadwal pertama: Tgl Mulai + 23 hari.</p>
+                                    <p className="text-[10px] text-teal-600 mt-1">Jika belum ada riwayat pengambilan, jadwal dihitung dari Tgl Mulai PRB + 23 hari.</p>
                                 )}
                             </div>
                         </div>
@@ -237,10 +260,7 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                                 className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
                             />
                             {formData.tanggal_pengambilan_terakhir && (
-                                <p className="text-[10px] text-teal-600 mt-1">PRB Lama — Jadwal berikutnya: Pengambilan Terakhir + 30 hari.</p>
-                            )}
-                            {!formData.tanggal_pengambilan_terakhir && (
-                                <p className="text-[10px] text-slate-500 mt-1">Sistem akan otomatis menghitung jadwal siklus berikutnya.</p>
+                                <p className="text-[10px] text-teal-600 mt-1">Jadwal berikutnya dihitung otomatis dari tanggal pengambilan terakhir + 30 hari.</p>
                             )}
                         </div>
                     </div>

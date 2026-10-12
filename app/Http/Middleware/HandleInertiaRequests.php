@@ -37,7 +37,13 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
-            //
+            // Flash messages — tersedia di semua halaman via usePage().props.flash
+            // success : konfirmasi aksi berhasil (hijau)
+            // info    : informasi non-kritis, mis. duplikat realisasi (kuning/amber)
+            'flash' => [
+                'success' => $request->session()->get('success'),
+                'info'    => $request->session()->get('info'),
+            ],
         ];
     }
 }

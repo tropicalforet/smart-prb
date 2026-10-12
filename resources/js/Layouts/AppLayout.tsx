@@ -7,6 +7,7 @@ import {
     X,
     Activity,
     ChevronRight,
+    Bell,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -16,21 +17,30 @@ interface AppLayoutProps {
 }
 
 const navItems = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Data Pasien', href: '/pasien', icon: Users },
-    { name: 'Rekap Kepatuhan', href: '/rekap', icon: Activity },
+    { name: 'Dashboard',         href: '/',        icon: LayoutDashboard },
+    { name: 'Data Pasien',       href: '/pasien',  icon: Users },
+    { name: 'Rekap Kepatuhan',   href: '/rekap',   icon: Activity },
+    { name: 'Reminder WhatsApp', href: '/reminder',icon: Bell },
 ];
 
 export default function AppLayout({ children, title }: AppLayoutProps) {
     const { url } = usePage();
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [flashMessage, setFlashMessage] = useState<string | null>(null);
+    const [flashType, setFlashType] = useState<'success' | 'info'>('success');
     const flash = (usePage().props as any).flash;
 
     useEffect(() => {
         if (flash?.success) {
             setFlashMessage(flash.success);
+            setFlashType('success');
             const timer = setTimeout(() => setFlashMessage(null), 4000);
+            return () => clearTimeout(timer);
+        }
+        if (flash?.info) {
+            setFlashMessage(flash.info);
+            setFlashType('info');
+            const timer = setTimeout(() => setFlashMessage(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [flash]);
@@ -145,16 +155,29 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                             exit={{ opacity: 0, y: -20 }}
                             className="mx-4 lg:mx-6 mt-4"
                         >
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                <p className="text-sm text-emerald-700">{flashMessage}</p>
-                                <button
-                                    onClick={() => setFlashMessage(null)}
-                                    className="ml-auto text-emerald-500 hover:text-emerald-700"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
+                            {flashType === 'success' ? (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                    <p className="text-sm text-emerald-700">{flashMessage}</p>
+                                    <button
+                                        onClick={() => setFlashMessage(null)}
+                                        className="ml-auto text-emerald-500 hover:text-emerald-700"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                    <p className="text-sm text-amber-700">{flashMessage}</p>
+                                    <button
+                                        onClick={() => setFlashMessage(null)}
+                                        className="ml-auto text-amber-500 hover:text-amber-700"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>

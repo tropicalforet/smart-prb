@@ -13,6 +13,7 @@ class ResepImport extends Model
     protected $table = 'resep_import';
 
     protected $fillable = [
+        'kode_pasien',          // ditambahkan: ada di schema sejak 2026-09-28 tapi tidak di fillable
         'no_kartu_bpjs',
         'nama_pasien',
         'no_whatsapp',
@@ -27,9 +28,9 @@ class ResepImport extends Model
     ];
 
     protected $casts = [
-        'diagnosis_prb' => 'array',
-        'tanggal_berobat' => 'date',
-        'tanggal_pengambilan' => 'date',
-        'tanggal_mulai_prb' => 'date',
+        'diagnosis_prb'      => 'array',
+        'tanggal_berobat'    => 'date',
+        'tanggal_pengambilan'=> 'date',
+        'tanggal_mulai_prb'  => 'date',
     ];
 }

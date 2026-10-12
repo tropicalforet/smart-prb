@@ -67,6 +67,10 @@ export default function PasienIndex({
     const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
     const [scheduleValue, setScheduleValue] = useState<string>('');
 
+    // Inline edit terakhir ambil obat
+    const [editingTerakhirId, setEditingTerakhirId] = useState<string | null>(null);
+    const [terakhirValue, setTerakhirValue] = useState<string>('');
+
     // Bulk selection states
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -112,6 +116,7 @@ export default function PasienIndex({
         if (!deletePasien) return;
         setIsDeleting(true);
         router.delete(`/pasien/${deletePasien.id}`, {
+            preserveScroll: true,
             onSuccess: () => {
                 setDeletePasien(null);
                 setIsDeleting(false);
@@ -144,21 +149,58 @@ export default function PasienIndex({
         setEditingScheduleId(null);
     };
 
-    // Inline edit realisasi handlers
-    const handleEditRealisasi = (pasien: PasienPRB) => {
-        setEditingRealisasiId(pasien.id);
-        setRealisasiValue(pasien.tanggal_realisasi || new Date().toISOString().split('T')[0]);
+    // Inline edit terakhir ambil obat handlers
+    const handleEditTerakhir = (pasien: PasienPRB) => {
+        setEditingTerakhirId(pasien.id);
+        setTerakhirValue(pasien.tanggal_pengambilan_terakhir || '');
     };
 
-    const handleSaveRealisasi = (pasienId: string) => {
-        router.post(`/pasien/${pasienId}/realisasi`, {
-            tanggal_realisasi: realisasiValue
+    const handleSaveTerakhir = (pasienId: string) => {
+        router.put(`/pasien/${pasienId}/terakhir-ambil`, {
+            tanggal_pengambilan_terakhir: terakhirValue
         }, {
             preserveScroll: true,
             onSuccess: () => {
-                setEditingRealisasiId(null);
+                setEditingTerakhirId(null);
             }
         });
+    };
+
+    const handleCancelEditTerakhir = () => {
+        setEditingTerakhirId(null);
+    };
+
+    // Inline edit realisasi handlers
+    // - Jika sudah ada riwayat aktif (riwayat_id_aktif tersedia) → PUT (edit)
+    // - Jika belum ada → POST (create siklus baru)
+    const handleEditRealisasi = (pasien: PasienPRB) => {
+        setEditingRealisasiId(pasien.id);
+        // Pre-fill dengan tanggal realisasi aktif siklus ini (bukan tanggal_realisasi master)
+        const tglAwal = pasien.tanggal_realisasi_aktif
+            || pasien.tanggal_realisasi
+            || new Date().toISOString().split('T')[0];
+        setRealisasiValue(tglAwal);
+    };
+
+    const handleSaveRealisasi = (pasien: PasienPRB) => {
+        if (pasien.riwayat_id_aktif) {
+            // Ada riwayat aktif → koreksi tanggal (PUT)
+            router.put(`/pasien/${pasien.id}/realisasi`, {
+                riwayat_id:        pasien.riwayat_id_aktif,
+                tanggal_realisasi: realisasiValue,
+            }, {
+                preserveScroll: true,
+                onSuccess: () => { setEditingRealisasiId(null); },
+            });
+        } else {
+            // Belum ada riwayat → catat realisasi baru (POST)
+            router.post(`/pasien/${pasien.id}/realisasi`, {
+                tanggal_realisasi: realisasiValue,
+            }, {
+                preserveScroll: true,
+                onSuccess: () => { setEditingRealisasiId(null); },
+            });
+        }
     };
 
     const handleCancelEditRealisasi = () => {
@@ -260,29 +302,21 @@ export default function PasienIndex({
     // Filter status options
     const statusKepatuhanOptions: StatusKepatuhan[] = [
         'Patuh',
-        'Dalam Toleransi',
+        'Belum Diambil',
         'Tidak Patuh',
         'Belum Jatuh Tempo',
         'Pasif',
     ];
 
-    // Format tanggal Indonesia
-    const formatTanggal = (tanggal?: string | null) => {
-        if (!tanggal) {
-            return '-';
-        }
-
-        const date = new Date(tanggal);
-
-        if (Number.isNaN(date.getTime())) {
-            return '-';
-        }
-
-        return date.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-        });
+    // Format tanggal: DD/MM/YYYY
+    const formatTanggal = (tanggal?: string | null): string => {
+        if (!tanggal) return '-';
+        const d = new Date(tanggal);
+        if (isNaN(d.getTime())) return '-';
+        const hari  = String(d.getDate()).padStart(2, '0');
+        const bulan = String(d.getMonth() + 1).padStart(2, '0');
+        const tahun = d.getFullYear();
+        return `${hari}/${bulan}/${tahun}`;
     };
 
     return (
@@ -316,7 +350,7 @@ export default function PasienIndex({
                             className="text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer h-[42px]"
                             value={filters.filter_periode || ''}
                             onChange={(e) => applyFilters({ filter_periode: e.target.value })}
-                            title="Periode Monitoring"
+                            title="Periode Pengambilan"
                         >
                             <option value="">Semua Periode</option>
                             {periodeOptions?.map((opt) => (
@@ -568,7 +602,7 @@ export default function PasienIndex({
             {/* Data Table */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1650px] text-left text-sm whitespace-nowrap">
+                    <table className="w-full min-w-[1600px] text-left text-sm">
                         <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider">
                             <tr>
                                 <th className="px-3 py-4 w-12">
@@ -601,7 +635,9 @@ export default function PasienIndex({
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[150px]">
-                                    Jadwal Ambil Obat
+                                    {filters.filter_periode
+                                        ? 'Jadwal Pengambilan'
+                                        : 'Jadwal Selanjutnya'}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[170px]">
@@ -609,7 +645,7 @@ export default function PasienIndex({
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[150px]">
-                                    Tanggal Ambil Obat
+                                    Kedatangan Pasien
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[170px]">
@@ -662,137 +698,99 @@ export default function PasienIndex({
                                                 </td>
 
                                                 {/* 1. PASIEN & JENIS */}
-                                                <td className="px-5 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold shrink-0 group-hover:bg-teal-50 group-hover:text-teal-600 transition-colors">
-                                                            {pasien.nama_pasien.charAt(
-                                                                0
-                                                            )}
+                                                <td className="px-5 py-4 min-w-[250px]">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold shrink-0 group-hover:bg-teal-50 group-hover:text-teal-600 transition-colors mt-0.5">
+                                                            {pasien.nama_pasien.charAt(0)}
                                                         </div>
 
-                                                        <div>
-                                                            <div className="font-semibold text-slate-800 flex items-center gap-2">
-                                                                {
-                                                                    pasien.nama_pasien
-                                                                }
-
+                                                        <div className="min-w-0">
+                                                            <div className="font-semibold text-slate-800 leading-tight whitespace-normal break-words">
+                                                                {pasien.nama_pasien}
+                                                            </div>
+                                                            <div className="mt-0.5 mb-1">
                                                                 <span
-                                                                    className={`text-[10px] px-1.5 py-0.5 rounded-sm border font-medium uppercase tracking-wider ${
-                                                                        pasien.jenis_prb ===
-                                                                        'Baru'
+                                                                    className={`inline-block text-[10px] px-1.5 py-0.5 rounded-sm border font-medium uppercase tracking-wider ${
+                                                                        pasien.jenis_prb === 'Baru'
                                                                             ? 'bg-blue-50 text-blue-600 border-blue-200'
                                                                             : 'bg-slate-100 text-slate-600 border-slate-200'
                                                                     }`}
                                                                 >
-                                                                    PRB{' '}
-                                                                    {
-                                                                        pasien.jenis_prb
-                                                                    }
+                                                                    PRB {pasien.jenis_prb}
                                                                 </span>
                                                             </div>
-
-                                                            <div className="text-xs text-slate-500">
-                                                                {
-                                                                    pasien.kode_pasien
-                                                                }{' '}
-                                                                •{' '}
-                                                                {
-                                                                    pasien.no_kartu_bpjs
-                                                                }
+                                                            <div className="text-xs text-slate-500 whitespace-nowrap">
+                                                                {pasien.kode_pasien}{' '}•{' '}{pasien.no_kartu_bpjs}
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </td>
 
                                                 {/* 2. DIAGNOSIS & ASAL */}
-                                                <td className="px-5 py-4">
-                                                    <div className="font-medium text-slate-700">
+                                                <td className="px-5 py-4 min-w-[180px]">
+                                                    <div className="font-medium text-slate-700 whitespace-normal leading-snug">
                                                         {(() => {
                                                             let diag = pasien.diagnosis_prb;
                                                             if (typeof diag === 'string') {
                                                                 try {
                                                                     const parsed = JSON.parse(diag);
                                                                     if (Array.isArray(parsed)) diag = parsed;
-                                                                } catch (e) {
-                                                                    // ignore and treat as plain string
-                                                                }
+                                                                } catch (e) {}
                                                             }
-                                                            return Array.isArray(diag) && diag.length > 0 
-                                                                ? diag.join(', ') 
+                                                            return Array.isArray(diag) && diag.length > 0
+                                                                ? diag.join(', ')
                                                                 : (diag || '-');
                                                         })()}
                                                     </div>
-
-                                                    <div className="text-xs text-slate-500 truncate max-w-[200px]">
-                                                        {
-                                                            pasien.fktp_asal
-                                                        }
+                                                    <div className="text-xs text-slate-500 mt-0.5 whitespace-normal">
+                                                        {pasien.fktp_asal}
                                                     </div>
                                                 </td>
 
                                                 {/* 3. MULAI PRB */}
-                                                <td className="px-5 py-4">
+                                                <td className="px-5 py-4 whitespace-nowrap">
                                                     <div className="font-medium text-slate-800">
-                                                        {formatTanggal(
-                                                            pasien.tanggal_mulai_prb
-                                                        )}
+                                                        {formatTanggal(pasien.tanggal_mulai_prb)}
                                                     </div>
                                                 </td>
 
                                                 {/* 4. TERAKHIR AMBIL OBAT */}
-                                                <td className="px-5 py-4">
-                                                    <div
-                                                        className={`font-medium ${
-                                                            pasien.tanggal_pengambilan_terakhir
-                                                                ? 'text-slate-800'
-                                                                : 'text-slate-400 italic'
-                                                        }`}
-                                                    >
-                                                        {pasien.tanggal_pengambilan_terakhir
-                                                            ? formatTanggal(
-                                                                  pasien.tanggal_pengambilan_terakhir
-                                                              )
-                                                            : 'Belum pernah'}
-                                                    </div>
-                                                </td>
-
-                                                {/* 5. JADWAL AMBIL OBAT */}
-                                                <td className="px-5 py-4">
+                                                <td className="px-5 py-4 whitespace-nowrap">
                                                     {pasien.status === 'Pasif' ? (
                                                         <span className="text-slate-400 text-xs italic">
                                                             Pasien Non-Aktif
                                                         </span>
-                                                    ) : editingScheduleId === pasien.id ? (
-                                                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                    ) : editingTerakhirId === pasien.id ? (
+                                                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                                                             <input
                                                                 type="date"
-                                                                value={scheduleValue}
-                                                                onChange={(e) => setScheduleValue(e.target.value)}
-                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[125px]"
+                                                                value={terakhirValue}
+                                                                onChange={(e) => setTerakhirValue(e.target.value)}
+                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
                                                             />
-                                                            <button onClick={() => handleSaveSchedule(pasien.id)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
+                                                            <button onClick={() => handleSaveTerakhir(pasien.id)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
                                                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
                                                             </button>
-                                                            <button onClick={handleCancelEditSchedule} className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors" title="Batal">
+                                                            <button onClick={handleCancelEditTerakhir} className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors" title="Batal">
                                                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                                             </button>
                                                         </div>
                                                     ) : (
                                                         <div
                                                             className={`font-medium cursor-pointer hover:bg-slate-100 p-1.5 rounded -ml-1 flex items-center justify-between group transition-colors ${
-                                                                pasien.tanggal_jadwal_berikutnya
+                                                                pasien.tanggal_pengambilan_terakhir
                                                                     ? 'text-slate-800'
                                                                     : 'text-slate-400 italic'
                                                             }`}
-                                                            onClick={(e) => { e.stopPropagation(); handleEditSchedule(pasien); }}
-                                                            title="Klik untuk mengubah jadwal manual"
+                                                            onClick={(e) => { e.stopPropagation(); handleEditTerakhir(pasien); }}
+                                                            title="Klik untuk mengubah tanggal terakhir ambil obat"
                                                         >
                                                             <span>
-                                                                {pasien.tanggal_jadwal_berikutnya
+                                                                {pasien.tanggal_pengambilan_terakhir
                                                                     ? formatTanggal(
-                                                                          pasien.tanggal_jadwal_berikutnya
+                                                                          pasien.tanggal_pengambilan_terakhir
                                                                       )
-                                                                    : 'Belum ada jadwal'}
+                                                                    : 'Belum pernah'}
                                                             </span>
                                                             <span className="opacity-0 group-hover:opacity-100 text-teal-600 transition-opacity ml-2">
                                                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
@@ -801,8 +799,31 @@ export default function PasienIndex({
                                                     )}
                                                 </td>
 
+                                                {/* 5. JADWAL SELANJUTNYA */}
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    {pasien.status === 'Pasif' ? (
+                                                        <span className="text-slate-400 text-xs italic">
+                                                            Pasien Non-Aktif
+                                                        </span>
+                                                    ) : (
+                                                        <div
+                                                            className={`font-medium p-1.5 rounded -ml-1 ${
+                                                                (pasien.jadwal_target_aktif || pasien.tanggal_jadwal_berikutnya)
+                                                                    ? 'text-slate-800'
+                                                                    : 'text-slate-400 italic'
+                                                            }`}
+                                                        >
+                                                            {(pasien.jadwal_target_aktif || pasien.tanggal_jadwal_berikutnya)
+                                                                ? formatTanggal(
+                                                                      pasien.jadwal_target_aktif || pasien.tanggal_jadwal_berikutnya
+                                                                  )
+                                                                : 'Belum ada jadwal'}
+                                                        </div>
+                                                    )}
+                                                </td>
+
                                                 {/* 6. EARLY WARNING */}
-                                                <td className="px-5 py-4">
+                                                <td className="px-5 py-4 whitespace-nowrap">
                                                     {(() => {
                                                         if (pasien.status === 'Pasif') {
                                                             return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border text-slate-500 bg-slate-100 border-slate-200">Tidak Berlaku</span>;
@@ -844,19 +865,19 @@ export default function PasienIndex({
                                                     })()}
                                                 </td>
 
-                                                {/* 7. TANGGAL AMBIL OBAT (Realisasi) */}
-                                                <td className="px-5 py-4">
+                                                {/* 7. KEDATANGAN PASIEN (Realisasi) */}
+                                                <td className="px-5 py-4 whitespace-nowrap">
                                                     {pasien.status === 'Pasif' ? (
                                                         <div className="font-medium text-slate-400 italic">—</div>
                                                     ) : editingRealisasiId === pasien.id ? (
-                                                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                                                             <input
                                                                 type="date"
                                                                 value={realisasiValue}
                                                                 onChange={(e) => setRealisasiValue(e.target.value)}
-                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[125px]"
+                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
                                                             />
-                                                            <button onClick={() => handleSaveRealisasi(pasien.id)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
+                                                            <button onClick={() => handleSaveRealisasi(pasien)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
                                                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
                                                             </button>
                                                             <button onClick={handleCancelEditRealisasi} className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors" title="Batal">
@@ -866,7 +887,7 @@ export default function PasienIndex({
                                                     ) : (
                                                         <div
                                                             className={`font-medium cursor-pointer hover:bg-slate-100 p-1.5 rounded -ml-1 flex items-center justify-between group/realisasi transition-colors ${
-                                                                pasien.tanggal_realisasi
+                                                                pasien.tanggal_realisasi_aktif
                                                                     ? 'text-emerald-700'
                                                                     : 'text-slate-400 italic'
                                                             }`}
@@ -874,9 +895,9 @@ export default function PasienIndex({
                                                             title="Klik untuk mencatat realisasi pengambilan obat"
                                                         >
                                                             <span>
-                                                                {pasien.tanggal_realisasi
+                                                                {pasien.tanggal_realisasi_aktif
                                                                     ? formatTanggal(
-                                                                          pasien.tanggal_realisasi
+                                                                          pasien.tanggal_realisasi_aktif
                                                                       )
                                                                     : 'Belum diambil'}
                                                             </span>
@@ -888,17 +909,21 @@ export default function PasienIndex({
                                                 </td>
 
                                                 {/* 8. STATUS KEPATUHAN */}
-                                                <td className="px-5 py-4">
-                                                    <StatusBadge
-                                                        status={
-                                                            pasien.status_kepatuhan ||
-                                                            'Belum Ada Jadwal'
-                                                        }
-                                                    />
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    {pasien.status === 'Pasif' ? (
+                                                        <StatusBadge status="Tidak Berlaku" />
+                                                    ) : (
+                                                        <StatusBadge
+                                                            status={
+                                                                pasien.status_kepatuhan ||
+                                                                'Belum Ada Jadwal'
+                                                            }
+                                                        />
+                                                    )}
                                                 </td>
 
                                                 {/* 9. AKSI */}
-                                                <td className="px-5 py-4 text-center">
+                                                <td className="px-5 py-4 text-center whitespace-nowrap">
                                                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 
                                                         <WhatsAppButton
@@ -1006,6 +1031,7 @@ export default function PasienIndex({
                 }
                 pasienId={detailPasienId}
                 tanggalEvaluasi={evalDate}
+                filterPeriode={filters.filter_periode || ''}
             />
 
             {/* MODAL KONFIRMASI HAPUS */}

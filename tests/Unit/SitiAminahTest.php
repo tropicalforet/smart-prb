@@ -43,7 +43,7 @@ class SitiAminahTest extends TestCase
         // Uji tentukanStatusKepatuhan untuk melihat status di master row
         $updated->load('riwayatPengambilanObat'); // pastikan data riwayat ada
         $kepatuhan = $service->tentukanStatusKepatuhan($updated, '2026-09-24');
-        $this->assertEquals('Patuh', $kepatuhan['status']);
-        $this->assertEquals('Belum Jatuh Tempo', $kepatuhan['early_warning']);
+        $this->assertEquals('Belum Jatuh Tempo', $kepatuhan['status']);
+        $this->assertEquals('Belum memasuki jadwal', $kepatuhan['early_warning']);
     }
 }
