@@ -14,11 +14,11 @@ class TindakLanjutController extends Controller
     ) {}
 
     /**
-     * Catat tindak lanjut petugas.
+     * Catat tindak lanjut satu pasien.
      *
      * Jika tindakan = "Sudah mengambil obat" dan sudah ada realisasi
-     * pada tanggal yang sama, tetap catat tindak lanjutnya (log percakapan
-     * tetap berguna) tapi beri tahu bahwa realisasi sudah tercatat.
+     * pada tanggal yang sama, tetap catat tindak lanjutnya tapi
+     * beri tahu bahwa realisasi sudah tercatat sebelumnya.
      */
     public function store(Request $request, PasienPrb $pasien)
     {
@@ -29,19 +29,23 @@ class TindakLanjutController extends Controller
             'tanggal_realisasi' => 'nullable|date',
         ]);
 
-        // Gunakan nama petugas dari input, atau default 'Petugas'
-        $namaPetugas = !empty($validated['petugas']) ? $validated['petugas'] : 'Petugas';
+        // Resolusi nama petugas: auth user → input form → fallback
+        if (auth()->check() && !empty(auth()->user()->name)) {
+            $namaPetugas = auth()->user()->name;
+        } elseif (!empty($validated['petugas'])) {
+            $namaPetugas = trim($validated['petugas']);
+        } else {
+            $namaPetugas = 'Petugas Apotek';
+        }
 
-        $updateRealisasi = false;
-        $realisasiDuplikat = false;
+        $updateRealisasi   = false;
+        $realisasiDuplikat = false; // ← fix: inisialisasi sebelum digunakan
 
         // Proses realisasi jika tindakan "Sudah mengambil obat" dan ada tanggal
         if ($validated['tindakan'] === 'Sudah mengambil obat' && !empty($validated['tanggal_realisasi'])) {
             $hasil = $this->kepatuhanService->prosesRealisasi($pasien, $validated['tanggal_realisasi']);
 
             if ($hasil['duplikat']) {
-                // Realisasi sudah tercatat — jangan majukan siklus lagi,
-                // tapi tetap simpan catatan tindak lanjut ini.
                 $realisasiDuplikat = true;
             } else {
                 $updateRealisasi = true;
@@ -60,10 +64,7 @@ class TindakLanjutController extends Controller
         if ($realisasiDuplikat) {
             return redirect()
                 ->back()
-                ->with(
-                    'info',
-                    'Tindak lanjut berhasil dicatat. Catatan: realisasi pada tanggal tersebut sudah tercatat sebelumnya.'
-                );
+                ->with('info', 'Tindak lanjut berhasil dicatat. Catatan: realisasi pada tanggal tersebut sudah tercatat sebelumnya.');
         }
 
         return redirect()->back()->with('success', 'Tindak lanjut berhasil dicatat.');

@@ -90,7 +90,7 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
             filterKepatuhan: 'Tidak Patuh',
         },
         {
-            title: 'Belum Diambil',
+            title: 'Dalam Toleransi',
             value: statistik.dalam_toleransi,
             subtitle: 'Rentang H-3 s.d. H+3',
             icon: Clock,
@@ -281,7 +281,12 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                                             </td>
                                             <td className="px-4 py-3 text-slate-600">{p.diagnosis_prb}</td>
                                             <td className="px-4 py-3 text-slate-600">
-                                                {p.tanggal_jadwal_berikutnya ? new Date(p.tanggal_jadwal_berikutnya).toLocaleDateString('id-ID') : '-'}
+                                                {p.tanggal_jadwal_berikutnya
+                                                    ? (() => {
+                                                        const d = new Date(p.tanggal_jadwal_berikutnya);
+                                                        return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+                                                    })()
+                                                    : '-'}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">

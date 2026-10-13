@@ -102,7 +102,7 @@ export default function RekapIndex({
             gradient: 'from-emerald-500 to-emerald-600',
         },
         {
-            title: 'Belum Diambil',
+            title: 'Dalam Toleransi',
             value: summary.dalam_toleransi,
             icon: Clock,
             gradient: 'from-amber-500 to-amber-600',
@@ -176,7 +176,8 @@ export default function RekapIndex({
                     >
                         <option value="">Semua Kepatuhan</option>
                         <option value="Patuh">Patuh</option>
-                        <option value="Belum Diambil">Belum Diambil</option>
+                        {/* value="Belum Diambil" harus cocok dengan string yang dikembalikan KepatuhanService */}
+                        <option value="Belum Diambil">Dalam Toleransi</option>
                         <option value="Tidak Patuh">Tidak Patuh</option>
                         <option value="Belum Jatuh Tempo">Belum Jatuh Tempo</option>
                         <option value="Pasif">Pasif</option>

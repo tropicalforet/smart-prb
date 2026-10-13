@@ -239,13 +239,13 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                                             <div className="text-xs text-slate-500 mb-1">Pengambilan Terakhir</div>
                                             <div className="font-medium text-slate-800">
-                                                {pasien.tanggal_pengambilan_terakhir ? new Date(pasien.tanggal_pengambilan_terakhir).toLocaleDateString('id-ID') : 'Belum pernah'}
+                                                {pasien.tanggal_pengambilan_terakhir ? formatTglHistori(pasien.tanggal_pengambilan_terakhir) : 'Belum pernah'}
                                             </div>
                                         </div>
                                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                                             <div className="text-xs text-slate-500 mb-1">Jadwal Berikutnya</div>
                                             <div className="font-medium text-slate-800">
-                                                {pasien.tanggal_jadwal_berikutnya ? new Date(pasien.tanggal_jadwal_berikutnya).toLocaleDateString('id-ID') : '-'}
+                                                {pasien.tanggal_jadwal_berikutnya ? formatTglHistori(pasien.tanggal_jadwal_berikutnya) : '-'}
                                             </div>
                                         </div>
                                     </div>
@@ -264,7 +264,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
                                         <div>
                                             <dt className="text-xs font-medium text-slate-500">Mulai PRB</dt>
-                                            <dd className="mt-1 text-sm text-slate-900">{new Date(pasien.tanggal_mulai_prb).toLocaleDateString('id-ID')}</dd>
+                                            <dd className="mt-1 text-sm text-slate-900">{formatTglHistori(pasien.tanggal_mulai_prb)}</dd>
                                         </div>
                                         <div>
                                             <dt className="text-xs font-medium text-slate-500">Jatah Obat</dt>

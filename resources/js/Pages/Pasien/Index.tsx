@@ -601,9 +601,9 @@ export default function PasienIndex({
 
             {/* Data Table */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
                     <table className="w-full min-w-[1600px] text-left text-sm">
-                        <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider sticky top-0 z-10">
                             <tr>
                                 <th className="px-3 py-4 w-12">
                                     <input

@@ -75,7 +75,10 @@ class PasienPrbController extends Controller
                 ];
             })->values()->toArray();
 
-        $query = PasienPrb::with('riwayatPengambilanObat')
+        $query = PasienPrb::with([
+            'riwayatPengambilanObat' => fn($q) =>
+                $q->orderBy('tanggal_pengambilan', 'desc'),
+        ])
             ->orderBy('kode_pasien', 'asc');
 
         /*
@@ -182,9 +185,20 @@ class PasienPrbController extends Controller
                 $keterangan = $kepatuhan['keterangan'];
                 $earlyWarning = $kepatuhan['early_warning'] ?? '-';
 
-                // jadwal_target_aktif: selalu dari service (jadwal siklus berikutnya untuk EWS)
+                // jadwal_target_aktif: dari service.
+                // Mode Semua Periode → jadwal aktif master (siklus berikutnya).
+                // Mode Periode Tertentu → jadwal_target riwayat siklus periode tsb.
+                //
+                // JANGAN fallback ke tanggal_jadwal_berikutnya master saat mode periode aktif,
+                // karena itu akan menampilkan jadwal siklus terbaru (mis. November 2026)
+                // saat user sedang melihat periode historis (mis. Februari 2024).
+                // Jika service tidak menemukan siklus di periode ini (Tidak Ada Transaksi),
+                // kolom jadwal harus null — bukan jadwal master.
                 $jadwalTarget = $kepatuhan['jadwal_target_aktif']
-                    ?? $pasien->tanggal_jadwal_berikutnya?->toDateString();
+                    ?? ($filterPeriode
+                        ? null  // Mode periode: tidak ada fallback ke master
+                        : $pasien->tanggal_jadwal_berikutnya?->toDateString()  // Mode semua: fallback boleh
+                    );
 
                 // tanggal_realisasi_aktif: dari service (Kedatangan Pasien)
                 // Mode Semua Periode → tanggal_pengambilan riwayat terbaru
@@ -329,7 +343,7 @@ class PasienPrbController extends Controller
 
             'no_kartu_bpjs' => [
                 'required',
-                'digits:13',
+                'digits:' . KepatuhanService::BPJS_DIGIT,
                 Rule::unique('pasien_prb', 'no_kartu_bpjs'),
             ],
 
@@ -345,11 +359,15 @@ class PasienPrbController extends Controller
                 'array',
                 'min:1'
             ],
-            
+
+            // Diagnosis PRB bersifat TERBUKA — tidak dibatasi daftar tetap.
+            // Apotek/FKTP dapat menggunakan nama diagnosis sesuai data aktual
+            // mereka. DIAGNOSIS_OPTIONS di model adalah referensi untuk UI,
+            // bukan validator ketat.
             'diagnosis_prb.*' => [
-                Rule::in(
-                    PasienPrb::DIAGNOSIS_OPTIONS
-                ),
+                'required',
+                'string',
+                'max:100',
             ],
 
             'tanggal_mulai_prb' =>
@@ -539,7 +557,7 @@ class PasienPrbController extends Controller
 
             'no_kartu_bpjs' => [
                 'required',
-                'digits:13',
+                'digits:' . KepatuhanService::BPJS_DIGIT,
                 \Illuminate\Validation\Rule::unique('pasien_prb', 'no_kartu_bpjs')->ignore($pasien->id),
             ],
 
@@ -555,11 +573,12 @@ class PasienPrbController extends Controller
                 'array',
                 'min:1'
             ],
-            
+
+            // Diagnosis PRB bersifat TERBUKA — tidak dibatasi daftar tetap.
             'diagnosis_prb.*' => [
-                Rule::in(
-                    PasienPrb::DIAGNOSIS_OPTIONS
-                ),
+                'required',
+                'string',
+                'max:100',
             ],
 
             'tanggal_mulai_prb' =>
@@ -839,8 +858,8 @@ class PasienPrbController extends Controller
         $updateData  = [
             'tanggal_pengambilan_terakhir' => $tglTerakhir,
             'jenis_prb'                    => 'Lama',
-            'jatah_obat'                   => 30,
-            'tanggal_jadwal_berikutnya'    => Carbon::parse($tglTerakhir)->addDays(30)->toDateString(),
+            'jatah_obat'                   => KepatuhanService::JATAH_PRB_LAMA,
+            'tanggal_jadwal_berikutnya'    => Carbon::parse($tglTerakhir)->addDays(KepatuhanService::JATAH_PRB_LAMA)->toDateString(),
         ];
 
         $pasien->update($updateData);
@@ -971,6 +990,25 @@ class PasienPrbController extends Controller
             // ----------------------------------------------------------------
             // LANGKAH 1: NORMALISASI FIELD
             // ----------------------------------------------------------------
+
+            // NO. FAKTUR / NO. TRANSAKSI APOTEK
+            // ─────────────────────────────────────────────────────────────
+            // Konteks penggunaan:
+            //
+            //   Data TESTING/DUMMY  : No. Invoice dummy (misal "CONTOH-INV-001")
+            //                         digunakan selama development dan pengujian.
+            //                         Nomor ini tidak mencerminkan transaksi nyata.
+            //
+            //   Data PENELITIAN/REAL: No. Invoice/Transaksi ASLI dari sistem apotek
+            //                         (misal "INV-2026-0001") akan digunakan saat
+            //                         data nyata dari Apotek Medika Antapani diberikan.
+            //
+            // ATURAN:
+            //   - Sistem TIDAK men-generate nomor invoice — nilai disimpan apa adanya.
+            //   - Sistem TIDAK memodifikasi nilai dari sumber (apotek).
+            //   - REALISASI-YYYYMMDD-{uuid} HANYA digunakan oleh KepatuhanService
+            //     untuk realisasi manual dari UI (bukan dari import Excel).
+            //   - Nomor dummy dan nomor asli diperlakukan IDENTIK oleh logic ini.
             $noFaktur = !empty($row['no_faktur'])
                 ? trim((string)$row['no_faktur'])
                 : null;
@@ -1035,8 +1073,8 @@ class PasienPrbController extends Controller
             if (empty($namaPasien)) {
                 $invalidReasons[] = 'Nama Pasien wajib diisi';
             }
-            if (empty($noKartuBpjs) || strlen((string)$noKartuBpjs) !== 13) {
-                $invalidReasons[] = 'No. Kartu BPJS harus 13 digit';
+            if (empty($noKartuBpjs) || strlen((string)$noKartuBpjs) !== KepatuhanService::BPJS_DIGIT) {
+                $invalidReasons[] = 'No. Kartu BPJS harus ' . KepatuhanService::BPJS_DIGIT . ' digit';
             }
             if (empty($fktpAsal)) {
                 $invalidReasons[] = 'FKTP Asal wajib diisi';
@@ -1058,7 +1096,7 @@ class PasienPrbController extends Controller
                     'fktp_asal'          => $fktpAsal    ?? '-',
                     'diagnosis_prb'      => $diagnosisPrb,
                     'no_faktur'          => $noFaktur,
-                    'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                    'tanggal_berobat'    => $tglBerobatDb,
                     'tanggal_pengambilan'=> $tglAmbilDb,
                     'tanggal_mulai_prb'  => $tglMulaiDb,
                     'status_import'      => 'invalid',
@@ -1166,7 +1204,7 @@ class PasienPrbController extends Controller
                     'fktp_asal'          => $fktpAsal,
                     'diagnosis_prb'      => $diagnosisPrb,
                     'no_faktur'          => $noFaktur,
-                    'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                    'tanggal_berobat'    => $tglBerobatDb,
                     'tanggal_pengambilan'=> $tglAmbilDb,
                     'tanggal_mulai_prb'  => $tglMulaiDb,
                     'status_import'      => 'duplikat',
@@ -1206,12 +1244,12 @@ class PasienPrbController extends Controller
                             ->first();
 
                         if ($terbaru && $terbaru->id === $riwayatUntukUpdate->id) {
-                            $jadwalBaru = Carbon::parse($tglAmbilDb)->addDays(30)->toDateString();
+                            $jadwalBaru = Carbon::parse($tglAmbilDb)->addDays(KepatuhanService::JATAH_PRB_LAMA)->toDateString();
                             $pasien->update([
                                 'tanggal_pengambilan_terakhir' => $tglAmbilDb,
                                 'tanggal_jadwal_berikutnya'    => $jadwalBaru,
                                 'jenis_prb'                    => 'Lama',
-                                'jatah_obat'                   => 30,
+                                'jatah_obat'                   => KepatuhanService::JATAH_PRB_LAMA,
                             ]);
                         }
                     });
@@ -1224,7 +1262,7 @@ class PasienPrbController extends Controller
                         'fktp_asal'          => $fktpAsal,
                         'diagnosis_prb'      => $diagnosisPrb,
                         'no_faktur'          => $noFaktur,
-                        'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                        'tanggal_berobat'    => $tglBerobatDb,
                         'tanggal_pengambilan'=> $tglAmbilDb,
                         'tanggal_mulai_prb'  => $tglMulaiDb,
                         'status_import'      => 'diperbarui',
@@ -1241,7 +1279,7 @@ class PasienPrbController extends Controller
                         'fktp_asal'          => $fktpAsal,
                         'diagnosis_prb'      => $diagnosisPrb,
                         'no_faktur'          => $noFaktur,
-                        'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                        'tanggal_berobat'    => $tglBerobatDb,
                         'tanggal_pengambilan'=> $tglAmbilDb,
                         'tanggal_mulai_prb'  => $tglMulaiDb,
                         'status_import'      => 'invalid',
@@ -1367,7 +1405,7 @@ class PasienPrbController extends Controller
                         // Fallback jika tidak ada jadwal: tglAmbilDb (selisih=0, Patuh).
                         if ($isPatientNew) {
                             $jadwalTarget = $tglMulaiDb
-                                ? Carbon::parse($tglMulaiDb)->addDays(23)->toDateString()
+                                ? Carbon::parse($tglMulaiDb)->addDays(KepatuhanService::JATAH_PRB_BARU)->toDateString()
                                 : $tglAmbilDb;
                         } else {
                             // Pasien lama: gunakan jadwal_target yang sudah di-capture
@@ -1410,7 +1448,7 @@ class PasienPrbController extends Controller
                     'fktp_asal'          => $fktpAsal,
                     'diagnosis_prb'      => $diagnosisPrb,
                     'no_faktur'          => $noFaktur,
-                    'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                    'tanggal_berobat'    => $tglBerobatDb,
                     'tanggal_pengambilan'=> $tglAmbilDb,
                     'tanggal_mulai_prb'  => $tglMulaiDb,
                     'status_import'      => 'baru',
@@ -1435,7 +1473,7 @@ class PasienPrbController extends Controller
                     'fktp_asal'          => $fktpAsal,
                     'diagnosis_prb'      => $diagnosisPrb,
                     'no_faktur'          => $noFaktur,
-                    'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                    'tanggal_berobat'    => $tglBerobatDb,
                     'tanggal_pengambilan'=> $tglAmbilDb,
                     'tanggal_mulai_prb'  => $tglMulaiDb,
                     'status_import'      => 'duplikat',
@@ -1455,7 +1493,7 @@ class PasienPrbController extends Controller
                     'fktp_asal'          => $fktpAsal,
                     'diagnosis_prb'      => $diagnosisPrb,
                     'no_faktur'          => $noFaktur,
-                    'tanggal_berobat'    => $tglBerobatDb ?? now()->toDateString(),
+                    'tanggal_berobat'    => $tglBerobatDb,
                     'tanggal_pengambilan'=> $tglAmbilDb,
                     'tanggal_mulai_prb'  => $tglMulaiDb,
                     'status_import'      => 'invalid',
@@ -1630,7 +1668,7 @@ class PasienPrbController extends Controller
         // =====================================================
         if (empty($tanggalTerakhir)) {
             $data['jenis_prb']  = 'Baru';
-            $data['jatah_obat'] = 23;
+            $data['jatah_obat'] = KepatuhanService::JATAH_PRB_BARU;
 
             // Fallback: jika tanggal_mulai_prb tidak ada, gunakan today
             $tglMulai = !empty($data['tanggal_mulai_prb'])
@@ -1638,7 +1676,7 @@ class PasienPrbController extends Controller
                 : Carbon::today()->toDateString();
 
             $data['tanggal_jadwal_berikutnya'] =
-                Carbon::parse($tglMulai)->addDays(23)->toDateString();
+                Carbon::parse($tglMulai)->addDays(KepatuhanService::JATAH_PRB_BARU)->toDateString();
 
             return;
         }
@@ -1647,9 +1685,9 @@ class PasienPrbController extends Controller
         // PRB LAMA: sudah memiliki riwayat pengambilan
         // =====================================================
         $data['jenis_prb']  = 'Lama';
-        $data['jatah_obat'] = 30;
+        $data['jatah_obat'] = KepatuhanService::JATAH_PRB_LAMA;
 
         $data['tanggal_jadwal_berikutnya'] =
-            Carbon::parse($tanggalTerakhir)->addDays(30)->toDateString();
+            Carbon::parse($tanggalTerakhir)->addDays(KepatuhanService::JATAH_PRB_LAMA)->toDateString();
     }
 }

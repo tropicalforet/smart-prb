@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\PasienPrb;
 use App\Models\RiwayatPengambilanObat;
+use App\Services\KepatuhanService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -145,23 +146,18 @@ class RecalculatePasienLogic extends Command
 
             if ($hasHistory) {
                 $newJenis       = 'Lama';
-                $newJatah       = 30;
+                $newJatah       = KepatuhanService::JATAH_PRB_LAMA;
                 $newTglTerakhir = Carbon::parse($riwayatTerakhir->tanggal_pengambilan)->toDateString();
-                $newJadwal      = Carbon::parse($newTglTerakhir)->addDays(30)->toDateString();
-                $newRealisasi   = null; // field master di-reset karena sudah ada di riwayat
+                $newJadwal      = Carbon::parse($newTglTerakhir)->addDays(KepatuhanService::JATAH_PRB_LAMA)->toDateString();
+                $newRealisasi   = null;
             } else {
-                // PRB Baru: tidak ada riwayat sama sekali.
-                // tanggal_pengambilan_terakhir HARUS null — walaupun field master
-                // sebelumnya bernilai (misalnya sisa dari data sebelumnya yang
-                // riwayatnya sudah dihapus). Tanpa ini, master bisa menampilkan
-                // "Terakhir Ambil=28/08" padahal riwayat kosong → inkonsistensi.
                 $newJenis       = 'Baru';
-                $newJatah       = 23;
-                $newTglTerakhir = null; // wajib null untuk PRB Baru tanpa riwayat
+                $newJatah       = KepatuhanService::JATAH_PRB_BARU;
+                $newTglTerakhir = null;
                 $tglMulai       = $pasien->tanggal_mulai_prb
                     ? Carbon::parse($pasien->tanggal_mulai_prb)->toDateString()
                     : Carbon::today()->toDateString();
-                $newJadwal      = Carbon::parse($tglMulai)->addDays(23)->toDateString();
+                $newJadwal      = Carbon::parse($tglMulai)->addDays(KepatuhanService::JATAH_PRB_BARU)->toDateString();
                 $newRealisasi   = null;
             }
 

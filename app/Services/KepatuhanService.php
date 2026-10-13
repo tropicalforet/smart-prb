@@ -10,8 +10,49 @@ use Illuminate\Support\Facades\DB;
 class KepatuhanService
 {
     /**
-     * Toleransi pengambilan obat:
-     * H-3 sampai H+3 dari tanggal jadwal.
+     * =========================================================
+     * KONSTANTA ATURAN BISNIS PRB
+     * =========================================================
+     *
+     * Seluruh angka kebijakan klinis dan bisnis BPJS Kesehatan
+     * dipusatkan di sini sebagai konstanta bertipe public const.
+     *
+     * Menggunakan konstanta (bukan literal tersebar) memastikan:
+     * - Satu titik perubahan jika kebijakan BPJS berubah.
+     * - Tidak ada inkonsistensi antar controller, service, command.
+     * - Dokumentasi terpusat tentang asal nilai.
+     */
+
+    /**
+     * Jatah obat (hari) untuk Pasien PRB Baru.
+     * PRB Baru = belum pernah ambil obat sejak terdaftar.
+     * Berdasarkan ketentuan BPJS Kesehatan: jadwal pertama = mulai + 23 hari.
+     */
+    public const JATAH_PRB_BARU = 23;
+
+    /**
+     * Jatah obat (hari) untuk Pasien PRB Lama.
+     * PRB Lama = sudah memiliki minimal satu riwayat pengambilan.
+     * Berdasarkan ketentuan BPJS Kesehatan: jadwal berikutnya = terakhir + 30 hari.
+     */
+    public const JATAH_PRB_LAMA = 30;
+
+    /**
+     * Panjang digit No. Kartu BPJS Kesehatan Indonesia yang valid.
+     * Berdasarkan format kartu BPJS Kesehatan saat ini.
+     */
+    public const BPJS_DIGIT = 13;
+
+    /**
+     * Batas selisih hari maksimum agar riwayat dianggap valid.
+     * Riwayat dengan |selisih| > nilai ini dianggap anomali/data rogue
+     * dan dikeluarkan dari perhitungan status & EWS.
+     */
+    public const MAKS_SELISIH_VALID = 90;
+
+    /**
+     * Toleransi pengambilan obat (hari):
+     * H-TOLERANSI_SEBELUM s/d H+TOLERANSI_SESUDAH dihitung Patuh.
      */
     private const TOLERANSI_SEBELUM = 3;
     private const TOLERANSI_SESUDAH = 3;
@@ -92,7 +133,7 @@ class KepatuhanService
         $riwayatTerbaru = $pasien->riwayatPengambilanObat
             ->filter(fn($r) => !empty($r->tanggal_pengambilan)
                 && !empty($r->jadwal_target)
-                && abs($r->selisih_hari ?? 0) <= 90)
+                && abs($r->selisih_hari ?? 0) <= self::MAKS_SELISIH_VALID)
             ->sortByDesc('tanggal_pengambilan')
             ->first();
 
@@ -283,15 +324,15 @@ class KepatuhanService
         //
         // PEMILIHAN TRANSAKSI (jika ada >1 riwayat per siklus):
         //   Ambil yang |selisih_hari| paling kecil → transaksi yang paling
-        //   logis untuk siklus ini. Hindari mengambil transaksi dengan
-        //   selisih ekstrem (>90 hari) yang merupakan data rogue/testing.
+        //   logis untuk siklus ini.
         //
-        // SAFEGUARD: jika seluruh riwayat untuk siklus ini punya
-        //   |selisih| > 90 hari, anggap tidak ada realisasi valid dan
-        //   lanjut ke LANGKAH 2 (evaluasi live siklus aktif).
-        // ---------------------------------------------------------------
-        $MAKS_SELISIH_VALID = 90; // lebih dari ini dianggap anomali
-
+        // PENTING: Selisih ekstrem (mis. 698 hari) BUKAN berarti data rogue.
+        //   Itu berarti pasien sangat telat untuk siklus ini → status Tidak Patuh.
+        //   Jangan buang riwayat hanya karena selisihnya besar.
+        //   MAKS_SELISIH_VALID hanya digunakan di mode Semua Periode untuk
+        //   menyaring data anomali tanpa konteks siklus spesifik.
+        //   Di sini kita sudah punya konteks eksplisit (periode), jadi
+        //   semua riwayat dengan jadwal_target di periode ini adalah valid.
         $riwayatSiklusKoleksi = $pasien->riwayatPengambilanObat
             ->filter(function ($r) use ($periode) {
                 if (!$r->jadwal_target || !$r->tanggal_pengambilan) {
@@ -302,10 +343,9 @@ class KepatuhanService
 
         // Dari koleksi siklus ini, pilih yang paling logis:
         // selisih absolut terkecil, dan di antara yang sama kecil, ambil created_at terbaru.
+        // TIDAK ada filter by MAKS_SELISIH_VALID di sini — semua riwayat
+        // yang jadwal_target-nya cocok dengan periode adalah kandidat sah.
         $riwayatSiklus = $riwayatSiklusKoleksi
-            ->filter(function ($r) use ($MAKS_SELISIH_VALID) {
-                return abs($r->selisih_hari ?? 0) <= $MAKS_SELISIH_VALID;
-            })
             ->sortBy([
                 [fn($r) => abs($r->selisih_hari ?? 0), 'asc'],  // selisih terkecil dulu
                 [fn($r) => $r->created_at,            'desc'],  // paling baru jika seri
@@ -611,7 +651,7 @@ class KepatuhanService
         //
         // no_faktur internal sudah dihitung di awal fungsi (deterministik).
         // ------------------------------------------------------------------
-        $jadwalBaru = $this->hitungJadwalBerikutnya($realisasi, 30);
+        $jadwalBaru = $this->hitungJadwalBerikutnya($realisasi, self::JATAH_PRB_LAMA);
 
         DB::transaction(function () use (
             $pasien, $realisasi, $jadwalTarget,
@@ -641,7 +681,7 @@ class KepatuhanService
                 'tanggal_jadwal_berikutnya'    => $jadwalBaru->toDateString(),
                 'tanggal_realisasi'            => null,
                 'jenis_prb'                    => 'Lama',
-                'jatah_obat'                   => 30,
+                'jatah_obat'                   => self::JATAH_PRB_LAMA,
             ]);
         });
 
@@ -741,12 +781,12 @@ class KepatuhanService
 
             if ($terbaru && $terbaru->id === $riwayat->id) {
                 // Riwayat ini adalah yang terbaru → sinkronkan master
-                $jadwalBaru = $this->hitungJadwalBerikutnya($tanggalBaru, 30);
+                $jadwalBaru = $this->hitungJadwalBerikutnya($tanggalBaru, self::JATAH_PRB_LAMA);
                 $pasien->update([
                     'tanggal_pengambilan_terakhir' => $tanggalBaru->toDateString(),
                     'tanggal_jadwal_berikutnya'    => $jadwalBaru->toDateString(),
                     'jenis_prb'                    => 'Lama',
-                    'jatah_obat'                   => 30,
+                    'jatah_obat'                   => self::JATAH_PRB_LAMA,
                 ]);
             }
         });
@@ -760,17 +800,34 @@ class KepatuhanService
      * =========================================================
      *
      * Statistik kondisi siklus aktif pasien pada tanggal evaluasi.
+     *
+     * PENTING — kalkulasi status hanya dilakukan SEKALI per pasien
+     * (bukan tiga kali seperti sebelumnya: global + per_diagnosis + per_fktp).
+     * Hasil kalkulasi disimpan dalam map keyed by pasien id, lalu
+     * di-aggregate untuk global, per_diagnosis, dan per_fktp.
+     *
+     * Per_diagnosis menggunakan diagnosis AKTUAL dari data pasien,
+     * BUKAN dari DIAGNOSIS_OPTIONS yang hardcoded — sehingga diagnosis
+     * bebas dari import Excel (mis. "Gagal Jantung") tetap terhitung.
      */
     public function hitungStatistikDashboard(
         ?string $tanggalEvaluasi = null
     ): array {
         $evaluasi = $tanggalEvaluasi ?: Carbon::today()->toDateString();
 
-        $semuaPasien = PasienPrb::with('riwayatPengambilanObat')->get();
+        $semuaPasien = PasienPrb::with([
+            'riwayatPengambilanObat' => fn($q) => $q->orderBy('tanggal_pengambilan', 'desc'),
+        ])->get();
 
-        $totalPasien     = $semuaPasien->count();
-        $pasienAktif     = $semuaPasien->where('status', 'Aktif');
-        $pasienPasif     = $semuaPasien->where('status', 'Pasif');
+        $totalPasien = $semuaPasien->count();
+        $pasienAktif = $semuaPasien->where('status', 'Aktif');
+        $pasienPasif = $semuaPasien->where('status', 'Pasif');
+        $totalAktif  = $pasienAktif->count();
+
+        // ── Langkah 1: Hitung status SEKALI per pasien aktif ──────────────
+        // Simpan hasilnya dalam array agar per_diagnosis dan per_fktp
+        // dapat menggunakannya tanpa memanggil service lagi.
+        $statusMap = []; // pasien->id => ['status' => ..., 'diagnosis' => [...], 'fktp' => ...]
 
         $patuh           = 0;
         $tidakPatuh      = 0;
@@ -778,74 +835,87 @@ class KepatuhanService
         $belumJatuhTempo = 0;
 
         foreach ($pasienAktif as $pasien) {
-            $k = $this->tentukanStatusKepatuhan($pasien, $evaluasi);
-            switch ($k['status']) {
-                case 'Patuh':          $patuh++;           break;
-                case 'Tidak Patuh':    $tidakPatuh++;      break;
-                case 'Belum Diambil':  $dalamToleransi++;  break;
+            $k      = $this->tentukanStatusKepatuhan($pasien, $evaluasi);
+            $status = $k['status'];
+
+            $statusMap[$pasien->id] = [
+                'status'    => $status,
+                'diagnosis' => is_array($pasien->diagnosis_prb) ? $pasien->diagnosis_prb : [],
+                'fktp'      => $pasien->fktp_asal,
+            ];
+
+            switch ($status) {
+                case 'Patuh':             $patuh++;           break;
+                case 'Tidak Patuh':       $tidakPatuh++;      break;
+                case 'Belum Diambil':     $dalamToleransi++;  break;
                 case 'Belum Jatuh Tempo': $belumJatuhTempo++; break;
             }
         }
 
-        $totalAktif         = $pasienAktif->count();
         $pasienDapatDinilai = $patuh + $tidakPatuh;
         $persentasePatuh    = $pasienDapatDinilai > 0
             ? round(($patuh / $pasienDapatDinilai) * 100, 1)
             : 0;
 
-        // Statistik per diagnosis
-        $perDiagnosis = [];
-        foreach (PasienPrb::DIAGNOSIS_OPTIONS as $diagnosis) {
-            $diagPatuh      = 0;
-            $diagTidakPatuh = 0;
+        // ── Langkah 2: Aggregate per diagnosis dari data aktual ───────────
+        // Gunakan diagnosis yang benar-benar ada di data, bukan DIAGNOSIS_OPTIONS.
+        // Satu pasien bisa punya >1 diagnosis — masing-masing dihitung terpisah.
+        $diagMap = []; // 'Hipertensi' => ['patuh' => 3, 'tidak_patuh' => 5]
 
-            foreach ($pasienAktif as $p) {
-                $diag = $p->diagnosis_prb;
-                if (!is_array($diag) || !in_array($diagnosis, $diag, true)) {
-                    continue;
+        foreach ($statusMap as $entry) {
+            foreach ($entry['diagnosis'] as $diag) {
+                $diag = trim($diag);
+                if (!$diag) continue;
+                if (!isset($diagMap[$diag])) {
+                    $diagMap[$diag] = ['patuh' => 0, 'tidak_patuh' => 0];
                 }
-                $k = $this->tentukanStatusKepatuhan($p, $evaluasi);
-                if ($k['status'] === 'Patuh')       $diagPatuh++;
-                if ($k['status'] === 'Tidak Patuh') $diagTidakPatuh++;
-            }
-
-            $diagTotal = $diagPatuh + $diagTidakPatuh;
-            if ($diagTotal > 0) {
-                $perDiagnosis[] = [
-                    'diagnosis'   => $diagnosis,
-                    'total'       => $diagTotal,
-                    'patuh'       => $diagPatuh,
-                    'tidak_patuh' => $diagTidakPatuh,
-                    'persentase'  => round(($diagPatuh / $diagTotal) * 100, 1),
-                ];
+                if ($entry['status'] === 'Patuh')       $diagMap[$diag]['patuh']++;
+                if ($entry['status'] === 'Tidak Patuh') $diagMap[$diag]['tidak_patuh']++;
             }
         }
 
-        // Statistik per FKTP
-        $fktpList = $pasienAktif->pluck('fktp_asal')->filter()->unique();
-        $perFktp  = [];
+        $perDiagnosis = [];
+        foreach ($diagMap as $diagnosis => $counts) {
+            $diagTotal = $counts['patuh'] + $counts['tidak_patuh'];
+            if ($diagTotal === 0) continue;
+            $perDiagnosis[] = [
+                'diagnosis'   => $diagnosis,
+                'total'       => $diagTotal,
+                'patuh'       => $counts['patuh'],
+                'tidak_patuh' => $counts['tidak_patuh'],
+                'persentase'  => round(($counts['patuh'] / $diagTotal) * 100, 1),
+            ];
+        }
+        // Urutkan: diagnosis dengan total terbanyak dulu
+        usort($perDiagnosis, fn($a, $b) => $b['total'] <=> $a['total']);
 
-        foreach ($fktpList as $fktp) {
-            $fktpPatuh      = 0;
-            $fktpTidakPatuh = 0;
+        // ── Langkah 3: Aggregate per FKTP ─────────────────────────────────
+        $fktpMap = []; // 'Puskesmas X' => ['patuh' => ..., 'tidak_patuh' => ...]
 
-            foreach ($pasienAktif->where('fktp_asal', $fktp) as $p) {
-                $k = $this->tentukanStatusKepatuhan($p, $evaluasi);
-                if ($k['status'] === 'Patuh')       $fktpPatuh++;
-                if ($k['status'] === 'Tidak Patuh') $fktpTidakPatuh++;
+        foreach ($statusMap as $entry) {
+            $fktp = $entry['fktp'] ?: 'Tanpa FKTP';
+            if (!isset($fktpMap[$fktp])) {
+                $fktpMap[$fktp] = ['patuh' => 0, 'tidak_patuh' => 0];
             }
+            if ($entry['status'] === 'Patuh')       $fktpMap[$fktp]['patuh']++;
+            if ($entry['status'] === 'Tidak Patuh') $fktpMap[$fktp]['tidak_patuh']++;
+        }
 
-            $fktpTotal = $fktpPatuh + $fktpTidakPatuh;
+        $perFktp = [];
+        foreach ($fktpMap as $fktp => $counts) {
+            $fktpTotal = $counts['patuh'] + $counts['tidak_patuh'];
             $perFktp[] = [
                 'fktp'        => $fktp,
                 'total'       => $fktpTotal,
-                'patuh'       => $fktpPatuh,
-                'tidak_patuh' => $fktpTidakPatuh,
+                'patuh'       => $counts['patuh'],
+                'tidak_patuh' => $counts['tidak_patuh'],
                 'persentase'  => $fktpTotal > 0
-                    ? round(($fktpPatuh / $fktpTotal) * 100, 1)
+                    ? round(($counts['patuh'] / $fktpTotal) * 100, 1)
                     : 0,
             ];
         }
+        // Urutkan: FKTP dengan total terbanyak dulu
+        usort($perFktp, fn($a, $b) => $b['total'] <=> $a['total']);
 
         return [
             'total_pasien'      => $totalPasien,

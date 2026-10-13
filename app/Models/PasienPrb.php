@@ -40,6 +40,14 @@ class PasienPrb extends Model
         'diagnosis_prb' => 'array',
     ];
 
+    /**
+     * Daftar referensi diagnosis PRB yang umum ditangani apotek BPJS.
+     * Digunakan sebagai pilihan dropdown di form manual (UI).
+     *
+     * BUKAN VALIDATOR: Diagnosis dari import Excel atau input bebas
+     * tidak dibatasi oleh daftar ini. Apotek/FKTP boleh memasukkan
+     * diagnosis apapun yang sesuai data aktual mereka.
+     */
     public const DIAGNOSIS_OPTIONS = [
         'Diabetes Melitus',
         'Hipertensi',

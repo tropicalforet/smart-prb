@@ -97,6 +97,7 @@ export interface DashboardStats {
     patuh: number;
     tidak_patuh: number;
     dalam_toleransi: number;
+    belum_jatuh_tempo: number;
     persentase_patuh: number;
     per_diagnosis: DiagnosisStats[];
     per_fktp: FktpStats[];

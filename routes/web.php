@@ -15,6 +15,7 @@ Route::get('/rekap', [RekapKepatuhanController::class, 'index'])->name('rekap.in
 
 // Reminder WhatsApp
 Route::get('/reminder', [ReminderController::class, 'index'])->name('reminder.index');
+Route::post('/reminder/blast', [ReminderController::class, 'blast'])->name('reminder.blast');
 
 // Pasien CRUD
 Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']);

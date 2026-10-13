@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PasienPrb;
+use App\Models\RiwayatPengambilanObat;
 use App\Services\KepatuhanService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,7 +23,10 @@ class RekapKepatuhanController extends Controller
         // Tanggal evaluasi kita default ke hari ini, atau bisa di set dari filter
         $tanggalEvaluasi = $request->input('tanggal_evaluasi', Carbon::today()->toDateString());
 
-        $query = PasienPrb::with('riwayatPengambilanObat');
+        $query = PasienPrb::with([
+            'riwayatPengambilanObat' => fn($q) =>
+                $q->orderBy('tanggal_pengambilan', 'desc'),
+        ]);
 
         // 1. Filter Database
         if ($filterFktp) {
@@ -58,19 +62,23 @@ class RekapKepatuhanController extends Controller
 
         // 3. Agregasi Global
         //
-        // $totalPasien = pasien yang siklusnya sudah dapat dievaluasi final.
-        // TIDAK termasuk 'Belum Jatuh Tempo' karena siklus mereka belum melewati
-        // batas toleransi H+3 sehingga belum dapat dinilai Patuh/Tidak Patuh.
-        // 'Belum Diambil' (H..H+3) tetap masuk karena sudah jatuh tempo meskipun
-        // masih dalam toleransi — mereka sudah dapat dipantau.
+        // $totalPasien = seluruh evaluasi dalam scope filter yang aktif.
+        // Definisi ini konsisten dengan kolom 'Total Pasien' di tabel FKTP,
+        // sehingga sum(total FKTP) == card Total.
+        //
+        // 'Belum Jatuh Tempo' TETAP dihitung dalam total — mereka adalah
+        // siklus aktif yang sedang berjalan, bukan siklus yang "tidak ada".
+        // Persentase kepatuhan dihitung terpisah dari denominator yang tepat
+        // (hanya Patuh + Tidak Patuh sebagai yang sudah dapat dievaluasi final).
         $totalBelumJatuhTempo = $allPasien->where('status_kepatuhan', 'Belum Jatuh Tempo')->count();
         $totalPatuh           = $allPasien->where('status_kepatuhan', 'Patuh')->count();
         $totalToleransi       = $allPasien->where('status_kepatuhan', 'Belum Diambil')->count();
         $totalTidakPatuh      = $allPasien->where('status_kepatuhan', 'Tidak Patuh')->count();
         $totalPasif           = $allPasien->where('status_kepatuhan', 'Pasif')->count();
 
-        // Denominator rekap: total minus yang belum masuk window penilaian
-        $totalPasien = $allPasien->count() - $totalBelumJatuhTempo;
+        // Total = seluruh evaluasi — tidak dikurangi kategori manapun
+        // agar konsisten dengan sum kolom Total di tabel FKTP.
+        $totalPasien = $allPasien->count();
         // 4. Agregasi per FKTP
         $rekapFktpData = [];
         $grouped = $allPasien->groupBy('fktp');
@@ -108,7 +116,7 @@ class RekapKepatuhanController extends Controller
         // 2. tanggal_jadwal_berikutnya di master (pasien Aktif) — siklus
         //    yang sedang berjalan dan belum ada riwayatnya.
         // ---------------------------------------------------------------
-        $periodesJadwalTarget = \App\Models\RiwayatPengambilanObat::select('jadwal_target')
+        $periodesJadwalTarget = RiwayatPengambilanObat::select('jadwal_target')
             ->whereNotNull('jadwal_target')
             ->pluck('jadwal_target')
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m'));
