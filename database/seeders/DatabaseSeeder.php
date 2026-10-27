@@ -12,13 +12,16 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      *
-     * PERHATIAN: Seeder ini hanya boleh berjalan di environment
-     * lokal dan testing. Diblokir secara eksplisit di production
-     * agar data dummy tidak masuk ke database produksi.
+     * Akun admin selalu dibuat (aman dijalankan ulang: akun yang sudah
+     * ada tidak diubah). Data pasien DUMMY hanya untuk lokal/testing —
+     * diblokir di production agar tidak masuk ke database produksi.
      */
     public function run(): void
     {
-        // Guard: tolak eksekusi di production
+        // Tanpa akun ini tidak ada yang bisa login ke instalasi baru
+        $this->call(AdminUserSeeder::class);
+
+        // Guard: tolak data dummy di production
         if (app()->isProduction()) {
             $this->command->error(
                 '[DatabaseSeeder] Seeder DIBLOKIR di environment production. ' .
