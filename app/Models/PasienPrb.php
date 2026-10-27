@@ -15,9 +15,7 @@ class PasienPrb extends Model
 
     protected $fillable = [
         'kode_pasien',
-        'nama_pasien',
-        'no_kartu_bpjs',
-        'no_whatsapp',
+        'noka',   // NOKA / NOKA tersandi (pengganti No. Kartu BPJS)
         'fktp_asal',
         'diagnosis_prb',
         'tanggal_mulai_prb',
@@ -92,6 +90,16 @@ class PasienPrb extends Model
     public function scopePasif($query)
     {
         return $query->where('status', 'Pasif');
+    }
+
+    /**
+     * Label pasien untuk audit log & pesan UI.
+     * Sesuai ketentuan etik, nama pasien tidak disimpan — pasien
+     * diidentifikasi dengan kode pasien + NOKA.
+     */
+    public function identitas(): string
+    {
+        return "{$this->kode_pasien} (NOKA {$this->noka})";
     }
 
     /**

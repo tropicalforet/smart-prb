@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PasienPrb;
 use App\Models\RiwayatPengambilanObat;
 use App\Models\RiwayatTindakLanjut;
+use App\Services\AuditLogService;
 use App\Services\KepatuhanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -13,7 +14,8 @@ use Inertia\Inertia;
 class ReminderController extends Controller
 {
     public function __construct(
-        private KepatuhanService $kepatuhanService
+        private KepatuhanService $kepatuhanService,
+        private AuditLogService  $auditLogService
     ) {}
 
     /**
@@ -37,26 +39,7 @@ class ReminderController extends Controller
         $tanggalEvaluasi = $request->input('tanggal_evaluasi', Carbon::today()->toDateString());
 
         // ── Periode dinamis ───────────────────────────────────────────────
-        $periodesJadwalTarget = RiwayatPengambilanObat::select('jadwal_target')
-            ->whereNotNull('jadwal_target')
-            ->pluck('jadwal_target')
-            ->map(fn ($d) => Carbon::parse($d)->format('Y-m'));
-
-        $periodesMaster = PasienPrb::select('tanggal_jadwal_berikutnya')
-            ->whereNotNull('tanggal_jadwal_berikutnya')
-            ->where('status', 'Aktif')
-            ->pluck('tanggal_jadwal_berikutnya')
-            ->map(fn ($d) => Carbon::parse($d)->format('Y-m'));
-
-        $periodeOptions = $periodesJadwalTarget
-            ->merge($periodesMaster)
-            ->filter()
-            ->unique()
-            ->sortDesc()
-            ->map(fn ($p) => [
-                'value' => $p,
-                'label' => Carbon::parse($p . '-01')->translatedFormat('F Y'),
-            ])->values()->toArray();
+        $periodeOptions = $this->kepatuhanService->daftarPeriode();
 
         // ── FKTP dinamis (hanya dari pasien Aktif) ────────────────────────
         $fktpOptions = PasienPrb::select('fktp_asal')
@@ -86,6 +69,10 @@ class ReminderController extends Controller
                         $q->orderBy('tanggal_jam', 'desc')->limit(5),
                 ])
                 ->where('status', 'Aktif')
+                // Filter hanya pasien dengan nomor WhatsApp valid (min 10 digit)
+                ->whereNotNull('no_whatsapp')
+                ->where('no_whatsapp', '!=', '')
+                ->whereRaw('LENGTH(no_whatsapp) >= 10')
                 ->where(function ($q) use ($filterPeriode) {
                     $q->whereHas('riwayatPengambilanObat', fn ($qr) =>
                         $qr->where('jadwal_target', 'like', $filterPeriode . '%')
@@ -167,7 +154,9 @@ class ReminderController extends Controller
      * 1. Terima daftar pasien_id yang dipilih petugas.
      * 2. Validasi nomor WhatsApp per pasien (format + ketersediaan).
      * 3. Untuk setiap pasien dengan nomor valid:
-     *    - Simpan record RiwayatTindakLanjut dengan tindakan "Reminder WhatsApp terkirim".
+     *    - Simpan record RiwayatTindakLanjut dengan tindakan "Reminder WhatsApp dibuka".
+     *      Sistem hanya membuka wa.me; tidak bisa memastikan pesan benar-benar
+     *      dikirim petugas, sehingga label sengaja TIDAK memakai kata "terkirim".
      * 4. Kembalikan JSON ringkasan: berhasil / gagal / invalid.
      *
      * Status "Berhasil" = nomor valid & record berhasil disimpan.
@@ -266,7 +255,7 @@ class ReminderController extends Controller
                     'pasien_prb_id'             => $pasien->id,
                     'tanggal_jam'               => now(),
                     'petugas'                   => $namaPetugas,
-                    'tindakan'                  => 'Reminder WhatsApp terkirim',
+                    'tindakan'                  => 'Reminder WhatsApp dibuka',
                     'catatan'                   => $catatan,
                     'update_realisasi_otomatis' => false,
                 ]);
@@ -276,7 +265,7 @@ class ReminderController extends Controller
                     'nama_pasien' => $pasien->nama_pasien,
                     'no_whatsapp' => $noWa,
                     'status'      => 'berhasil',
-                    'keterangan'  => 'Tercatat di riwayat tindak lanjut',
+                    'keterangan'  => 'WhatsApp dibuka, kirim pesan secara manual',
                 ];
                 $berhasil++;
 
@@ -290,6 +279,10 @@ class ReminderController extends Controller
                 ];
                 $gagal++;
             }
+        }
+
+        if ($berhasil > 0) {
+            $this->auditLogService->bukaReminder($berhasil, trim($filterPeriode . ' ' . $filterKategori));
         }
 
         return response()->json([

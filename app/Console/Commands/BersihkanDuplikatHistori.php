@@ -19,7 +19,7 @@ class BersihkanDuplikatHistori extends Command
      */
     protected $signature = 'histori:bersihkan-duplikat {--dry-run : Preview tanpa menghapus}';
 
-    protected $description = 'Bersihkan duplikat riwayat pengambilan obat berdasarkan No. Faktur atau kombinasi BPJS + Tanggal Berobat';
+    protected $description = 'Bersihkan duplikat riwayat pengambilan obat berdasarkan No. Faktur atau kombinasi NOKA + Tanggal Berobat';
 
     public function handle(): int
     {

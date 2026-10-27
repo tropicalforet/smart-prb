@@ -44,6 +44,16 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'info'    => $request->session()->get('info'),
             ],
+            // Auth user — tersedia di semua halaman via usePage().props.auth
+            'auth' => [
+                'user' => $request->user()
+                    ? [
+                        'id'   => $request->user()->id,
+                        'name' => $request->user()->name,
+                        'email'=> $request->user()->email,
+                    ]
+                    : null,
+            ],
         ];
     }
 }

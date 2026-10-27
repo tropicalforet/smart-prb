@@ -9,7 +9,6 @@ import {
 } from '@/types';
 import { Button } from '@/Components/ui/Button';
 import { StatusBadge } from '@/Components/ui/Badge';
-import { WhatsAppButton } from '@/Components/Pasien/WhatsAppButton';
 
 import { PatientDetailModal } from '@/Components/Pasien/PatientDetailModal';
 import { AddPatientModal } from '@/Components/Pasien/AddPatientModal';
@@ -27,6 +26,10 @@ import {
     AlertTriangle,
     CheckSquare,
     X,
+    IdCard,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -51,14 +54,15 @@ export default function PasienIndex({
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [evalDate, setEvalDate] = useState(tanggalEvaluasi);
     const [showFilters, setShowFilters] = useState(false);
+    
+    // Sorting states
+    const [sortBy, setSortBy] = useState(filters.sort_by || 'urgensi');
+    const [sortOrder, setSortOrder] = useState(filters.sort_order || 'desc');
 
     // Modal states
     const [addModalOpen, setAddModalOpen] = useState(false);
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [detailPasienId, setDetailPasienId] = useState<string | null>(null);
-    // Inline edit realisasi
-    const [editingRealisasiId, setEditingRealisasiId] = useState<string | null>(null);
-    const [realisasiValue, setRealisasiValue] = useState<string>('');
     const [deletePasien, setDeletePasien] =
         useState<PasienPRB | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -170,43 +174,6 @@ export default function PasienIndex({
         setEditingTerakhirId(null);
     };
 
-    // Inline edit realisasi handlers
-    // - Jika sudah ada riwayat aktif (riwayat_id_aktif tersedia) → PUT (edit)
-    // - Jika belum ada → POST (create siklus baru)
-    const handleEditRealisasi = (pasien: PasienPRB) => {
-        setEditingRealisasiId(pasien.id);
-        // Pre-fill dengan tanggal realisasi aktif siklus ini (bukan tanggal_realisasi master)
-        const tglAwal = pasien.tanggal_realisasi_aktif
-            || pasien.tanggal_realisasi
-            || new Date().toISOString().split('T')[0];
-        setRealisasiValue(tglAwal);
-    };
-
-    const handleSaveRealisasi = (pasien: PasienPRB) => {
-        if (pasien.riwayat_id_aktif) {
-            // Ada riwayat aktif → koreksi tanggal (PUT)
-            router.put(`/pasien/${pasien.id}/realisasi`, {
-                riwayat_id:        pasien.riwayat_id_aktif,
-                tanggal_realisasi: realisasiValue,
-            }, {
-                preserveScroll: true,
-                onSuccess: () => { setEditingRealisasiId(null); },
-            });
-        } else {
-            // Belum ada riwayat → catat realisasi baru (POST)
-            router.post(`/pasien/${pasien.id}/realisasi`, {
-                tanggal_realisasi: realisasiValue,
-            }, {
-                preserveScroll: true,
-                onSuccess: () => { setEditingRealisasiId(null); },
-            });
-        }
-    };
-
-    const handleCancelEditRealisasi = () => {
-        setEditingRealisasiId(null);
-    };
-
     // Handle bulk delete
     const handleBulkDelete = () => {
         setIsBulkDeleting(true);
@@ -239,6 +206,8 @@ export default function PasienIndex({
                     search: searchTerm,
                     tanggal_evaluasi:
                         overrideEvalDate || evalDate,
+                    sort_by: sortBy,
+                    sort_order: sortOrder,
                     ...newFilters,
                 },
                 {
@@ -247,14 +216,29 @@ export default function PasienIndex({
                 }
             );
         },
-        [filters, searchTerm, evalDate]
+        [filters, searchTerm, evalDate, sortBy, sortOrder]
     );
 
     // Reset filters
     const resetFilters = () => {
         setSearchTerm('');
         setEvalDate(new Date().toLocaleDateString('en-CA')); // format YYYY-MM-DD
+        setSortBy('urgensi');
+        setSortOrder('desc');
         router.get('/pasien', {}, { preserveState: true, preserveScroll: true });
+    };
+    
+    // Handle sort change
+    const handleSortChange = (newSortBy: string) => {
+        setSortBy(newSortBy);
+        applyFilters({ sort_by: newSortBy, sort_order: sortOrder });
+    };
+    
+    // Toggle sort order
+    const toggleSortOrder = () => {
+        const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+        setSortOrder(newOrder);
+        applyFilters({ sort_by: sortBy, sort_order: newOrder });
     };
 
     // Handle search input with Enter
@@ -277,6 +261,8 @@ export default function PasienIndex({
                 filter_kepatuhan: filters.filter_kepatuhan || '',
                 filter_diagnosis: filters.filter_diagnosis || '',
                 filter_fktp: filters.filter_fktp || '',
+                filter_jenis_prb: filters.filter_jenis_prb || '',
+                filter_early_warning: filters.filter_early_warning || '',
             });
 
             const res = await fetch(
@@ -302,7 +288,7 @@ export default function PasienIndex({
     // Filter status options
     const statusKepatuhanOptions: StatusKepatuhan[] = [
         'Patuh',
-        'Belum Diambil',
+        'Dalam Toleransi',
         'Tidak Patuh',
         'Belum Jatuh Tempo',
         'Pasif',
@@ -333,7 +319,7 @@ export default function PasienIndex({
 
                         <input
                             type="text"
-                            placeholder="Cari nama, No BPJS, atau Kode PRB... (Tekan Enter)"
+                            placeholder="Cari NOKA atau Kode PRB... (Tekan Enter)"
                             value={searchTerm}
                             onChange={(e) =>
                                 setSearchTerm(e.target.value)
@@ -359,6 +345,34 @@ export default function PasienIndex({
                                 </option>
                             ))}
                         </select>
+                    </div>
+                    
+                    {/* Sort Controls */}
+                    <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 shadow-sm h-[42px]">
+                        <select
+                            className="text-sm font-medium text-slate-700 bg-transparent border-0 rounded-l-xl px-3 py-2 focus:outline-none focus:ring-0 cursor-pointer pr-2"
+                            value={sortBy}
+                            onChange={(e) => handleSortChange(e.target.value)}
+                            title="Urutkan Berdasarkan"
+                        >
+                            <option value="urgensi">🔥 Urgensi</option>
+                            <option value="kode_pasien">🔢 Kode Pasien</option>
+                            <option value="nama_pasien">👤 Nama</option>
+                            <option value="tanggal_mulai_prb">📅 Mulai PRB</option>
+                            <option value="tanggal_pengambilan_terakhir">📦 Terakhir Ambil</option>
+                            <option value="tanggal_jadwal_berikutnya">⏰ Jadwal Berikutnya</option>
+                        </select>
+                        <button
+                            onClick={toggleSortOrder}
+                            className="px-2 py-2 hover:bg-slate-100 rounded-r-xl transition-colors border-l border-slate-200"
+                            title={sortOrder === 'asc' ? 'Urutan: A→Z / Lama→Baru' : 'Urutan: Z→A / Baru→Lama'}
+                        >
+                            {sortOrder === 'asc' ? (
+                                <ArrowUp className="w-4 h-4 text-teal-600" />
+                            ) : (
+                                <ArrowDown className="w-4 h-4 text-teal-600" />
+                            )}
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2 shadow-sm mr-2">
@@ -443,7 +457,7 @@ export default function PasienIndex({
                         }}
                         className="overflow-hidden mb-6"
                     >
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                             {/* Status Pasien */}
                             <div>
                                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -476,6 +490,35 @@ export default function PasienIndex({
                                 </select>
                             </div>
 
+                            {/* Jenis PRB */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                    Jenis PRB
+                                </label>
+
+                                <select
+                                    value={
+                                        filters.filter_jenis_prb || ''
+                                    }
+                                    onChange={(e) =>
+                                        applyFilters({
+                                            filter_jenis_prb:
+                                                e.target.value,
+                                        })
+                                    }
+                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                >
+                                    <option value="">
+                                        Semua Jenis
+                                    </option>
+                                    <option value="Baru">
+                                        PRB Baru
+                                    </option>
+                                    <option value="Lama">
+                                        PRB Lama
+                                    </option>
+                                </select>
+                            </div>
 
                             {/* Status Kepatuhan */}
                             <div>
@@ -509,6 +552,42 @@ export default function PasienIndex({
                                             </option>
                                         )
                                     )}
+                                </select>
+                            </div>
+
+                            {/* Early Warning */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                    Early Warning
+                                </label>
+
+                                <select
+                                    value={
+                                        filters.filter_early_warning || ''
+                                    }
+                                    onChange={(e) =>
+                                        applyFilters({
+                                            filter_early_warning:
+                                                e.target.value,
+                                        })
+                                    }
+                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                >
+                                    <option value="">
+                                        Semua Warning
+                                    </option>
+                                    <option value="Jadwal Mendekat">
+                                        🟡 Jadwal Mendekat
+                                    </option>
+                                    <option value="Jatuh Tempo">
+                                        🟠 Jatuh Tempo
+                                    </option>
+                                    <option value="Belum Mengambil">
+                                        🟠 Belum Mengambil
+                                    </option>
+                                    <option value="Tidak Patuh">
+                                        🔴 Tidak Patuh / Overdue
+                                    </option>
                                 </select>
                             </div>
 
@@ -644,10 +723,6 @@ export default function PasienIndex({
                                     Early Warning
                                 </th>
 
-                                <th className="px-5 py-4 min-w-[150px]">
-                                    Kedatangan Pasien
-                                </th>
-
                                 <th className="px-5 py-4 min-w-[170px]">
                                     Status Kepatuhan
                                 </th>
@@ -701,12 +776,12 @@ export default function PasienIndex({
                                                 <td className="px-5 py-4 min-w-[250px]">
                                                     <div className="flex items-start gap-3">
                                                         <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold shrink-0 group-hover:bg-teal-50 group-hover:text-teal-600 transition-colors mt-0.5">
-                                                            {pasien.nama_pasien.charAt(0)}
+                                                            <IdCard className="w-4 h-4" />
                                                         </div>
 
                                                         <div className="min-w-0">
                                                             <div className="font-semibold text-slate-800 leading-tight whitespace-normal break-words">
-                                                                {pasien.nama_pasien}
+                                                                {pasien.kode_pasien}
                                                             </div>
                                                             <div className="mt-0.5 mb-1">
                                                                 <span
@@ -720,7 +795,7 @@ export default function PasienIndex({
                                                                 </span>
                                                             </div>
                                                             <div className="text-xs text-slate-500 whitespace-nowrap">
-                                                                {pasien.kode_pasien}{' '}•{' '}{pasien.no_kartu_bpjs}
+                                                                <span className="font-mono">NOKA {pasien.noka}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -865,50 +940,7 @@ export default function PasienIndex({
                                                     })()}
                                                 </td>
 
-                                                {/* 7. KEDATANGAN PASIEN (Realisasi) */}
-                                                <td className="px-5 py-4 whitespace-nowrap">
-                                                    {pasien.status === 'Pasif' ? (
-                                                        <div className="font-medium text-slate-400 italic">—</div>
-                                                    ) : editingRealisasiId === pasien.id ? (
-                                                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                                            <input
-                                                                type="date"
-                                                                value={realisasiValue}
-                                                                onChange={(e) => setRealisasiValue(e.target.value)}
-                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
-                                                            />
-                                                            <button onClick={() => handleSaveRealisasi(pasien)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
-                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                                                            </button>
-                                                            <button onClick={handleCancelEditRealisasi} className="text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded transition-colors" title="Batal">
-                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div
-                                                            className={`font-medium cursor-pointer hover:bg-slate-100 p-1.5 rounded -ml-1 flex items-center justify-between group/realisasi transition-colors ${
-                                                                pasien.tanggal_realisasi_aktif
-                                                                    ? 'text-emerald-700'
-                                                                    : 'text-slate-400 italic'
-                                                            }`}
-                                                            onClick={(e) => { e.stopPropagation(); handleEditRealisasi(pasien); }}
-                                                            title="Klik untuk mencatat realisasi pengambilan obat"
-                                                        >
-                                                            <span>
-                                                                {pasien.tanggal_realisasi_aktif
-                                                                    ? formatTanggal(
-                                                                          pasien.tanggal_realisasi_aktif
-                                                                      )
-                                                                    : 'Belum diambil'}
-                                                            </span>
-                                                            <span className="opacity-0 group-hover/realisasi:opacity-100 text-teal-600 transition-opacity ml-2">
-                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </td>
-
-                                                {/* 8. STATUS KEPATUHAN */}
+                                                {/* 7. STATUS KEPATUHAN */}
                                                 <td className="px-5 py-4 whitespace-nowrap">
                                                     {pasien.status === 'Pasif' ? (
                                                         <StatusBadge status="Tidak Berlaku" />
@@ -925,16 +957,6 @@ export default function PasienIndex({
                                                 {/* 9. AKSI */}
                                                 <td className="px-5 py-4 text-center whitespace-nowrap">
                                                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-
-                                                        <WhatsAppButton
-                                                            pasien={
-                                                                pasien
-                                                            }
-                                                            tanggalEvaluasi={
-                                                                evalDate
-                                                            }
-                                                            variant="icon"
-                                                        />
 
                                                         <button
                                                             onClick={() =>
@@ -968,7 +990,7 @@ export default function PasienIndex({
                             ) : (
                                 <tr>
                                     <td
-                                        colSpan={10}
+                                        colSpan={9}
                                         className="px-5 py-16 text-center text-slate-500"
                                     >
                                         <div className="flex flex-col items-center">
@@ -1069,7 +1091,7 @@ export default function PasienIndex({
                                         <p className="mt-2 text-sm text-slate-600">
                                             Apakah Anda yakin ingin menghapus data pasien{' '}
                                             <span className="font-semibold text-slate-800">
-                                                {deletePasien.nama_pasien}
+                                                {deletePasien.kode_pasien}
                                             </span>
                                             ? Tindakan ini tidak dapat dibatalkan dan semua riwayat terkait akan ikut terhapus.
                                         </p>
@@ -1081,8 +1103,8 @@ export default function PasienIndex({
                                                     {deletePasien.kode_pasien}
                                                 </div>
                                                 <div>
-                                                    <span className="font-medium">No. BPJS:</span>{' '}
-                                                    {deletePasien.no_kartu_bpjs}
+                                                    <span className="font-medium">NOKA:</span>{' '}
+                                                    {deletePasien.noka}
                                                 </div>
                                                 <div>
                                                     <span className="font-medium">Diagnosis:</span>{' '}

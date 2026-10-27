@@ -1,5 +1,5 @@
-import { Link, usePage } from '@inertiajs/react';
-import { ReactNode, useState, useEffect } from 'react';
+import { Link, router, usePage } from '@inertiajs/react';
+import { ReactNode, useState, useEffect, useRef } from 'react';
 import {
     LayoutDashboard,
     Users,
@@ -7,7 +7,11 @@ import {
     X,
     Activity,
     ChevronRight,
-    Bell,
+    LogOut,
+    UserCircle,
+    ChevronDown,
+    ClipboardList,
+    KeyRound,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -17,18 +21,23 @@ interface AppLayoutProps {
 }
 
 const navItems = [
-    { name: 'Dashboard',         href: '/',        icon: LayoutDashboard },
-    { name: 'Data Pasien',       href: '/pasien',  icon: Users },
-    { name: 'Rekap Kepatuhan',   href: '/rekap',   icon: Activity },
-    { name: 'Reminder WhatsApp', href: '/reminder',icon: Bell },
+    { name: 'Dashboard',         href: '/',          icon: LayoutDashboard },
+    { name: 'Data Pasien',       href: '/pasien',    icon: Users },
+    { name: 'Rekap Kepatuhan',   href: '/rekap',     icon: Activity },
+    { name: 'Audit Log',         href: '/audit-log', icon: ClipboardList },
 ];
 
 export default function AppLayout({ children, title }: AppLayoutProps) {
     const { url } = usePage();
+    const auth = (usePage().props as any).auth;
+    const userName: string = auth?.user?.name ?? 'Admin';
+
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [flashMessage, setFlashMessage] = useState<string | null>(null);
     const [flashType, setFlashType] = useState<'success' | 'info'>('success');
     const flash = (usePage().props as any).flash;
+    const userMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (flash?.success) {
@@ -44,6 +53,21 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
             return () => clearTimeout(timer);
         }
     }, [flash]);
+
+    // Tutup user menu saat klik di luar
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+                setUserMenuOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleLogout = () => {
+        router.post('/logout');
+    };
 
     const isActive = (href: string) => {
         if (href === '/') return url === '/';
@@ -78,7 +102,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                             <Activity className="w-5 h-5 text-white" strokeWidth={2.5} />
                         </div>
                         <div>
-                            <h1 className="text-white font-bold text-lg tracking-tight leading-none">SMART PRB</h1>
+                            <h1 className="text-white font-bold text-lg tracking-tight leading-none">Dashboard PRB</h1>
                             <p className="text-slate-400 text-[10px] mt-0.5 tracking-wide uppercase">Monitoring Kepatuhan Obat</p>
                         </div>
                         <button
@@ -138,9 +162,48 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                             )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1.5">
-                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                <span>Sistem Aktif</span>
+                            {/* User menu */}
+                            <div className="relative" ref={userMenuRef}>
+                                <button
+                                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 hover:bg-slate-100 transition text-sm text-slate-700"
+                                >
+                                    <UserCircle className="w-5 h-5 text-teal-600" />
+                                    <span className="hidden sm:block font-medium">{userName}</span>
+                                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                <AnimatePresence>
+                                    {userMenuOpen && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                                            transition={{ duration: 0.12 }}
+                                            className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50"
+                                        >
+                                            <div className="px-3 py-2 border-b border-slate-100">
+                                                <p className="text-xs font-semibold text-slate-800 truncate">{userName}</p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5">Administrator</p>
+                                            </div>
+                                            <Link
+                                                href="/akun/password"
+                                                onClick={() => setUserMenuOpen(false)}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition"
+                                            >
+                                                <KeyRound className="w-4 h-4" />
+                                                Ganti Password
+                                            </Link>
+                                            <button
+                                                onClick={handleLogout}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 transition"
+                                            >
+                                                <LogOut className="w-4 h-4" />
+                                                Keluar
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         </div>
                     </div>

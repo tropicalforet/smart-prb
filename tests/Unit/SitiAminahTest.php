@@ -16,8 +16,7 @@ class SitiAminahTest extends TestCase
         $service = new KepatuhanService();
         $pasien = PasienPrb::create([
             'kode_pasien' => 'PRB-SITI',
-            'nama_pasien' => 'Siti Aminah',
-            'no_kartu_bpjs' => '0001234567891',
+            'noka' => '0001234567891',
             'fktp_asal' => 'Puskesmas',
             'diagnosis_prb' => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-01-01',
@@ -28,7 +27,7 @@ class SitiAminahTest extends TestCase
             'status' => 'Aktif',
         ]);
 
-        $updated = $service->prosesRealisasi($pasien, '2026-09-24');
+        $updated = $service->prosesRealisasi($pasien, '2026-09-24')['pasien'];
 
         $this->assertEquals('2026-09-24', $updated->tanggal_pengambilan_terakhir->toDateString());
         $this->assertEquals('2026-10-24', $updated->tanggal_jadwal_berikutnya->toDateString());
@@ -40,10 +39,10 @@ class SitiAminahTest extends TestCase
         $this->assertEquals(0, $riwayat->selisih_hari);
         $this->assertEquals('Patuh', $riwayat->status_kepatuhan);
 
-        // Uji tentukanStatusKepatuhan untuk melihat status di master row
+        // Status = siklus terakhir selesai (Patuh), EWS = siklus aktif berikutnya
         $updated->load('riwayatPengambilanObat'); // pastikan data riwayat ada
         $kepatuhan = $service->tentukanStatusKepatuhan($updated, '2026-09-24');
-        $this->assertEquals('Belum Jatuh Tempo', $kepatuhan['status']);
+        $this->assertEquals('Patuh', $kepatuhan['status']);
         $this->assertEquals('Belum memasuki jadwal', $kepatuhan['early_warning']);
     }
 }

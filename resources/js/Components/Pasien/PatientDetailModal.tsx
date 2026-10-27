@@ -5,7 +5,7 @@ import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import {
-    User, Phone, FileText, Activity, Calendar,
+    User, IdCard, FileText, Activity, Calendar,
     History, MessageSquarePlus, Stethoscope, Save
 } from 'lucide-react';
 
@@ -21,7 +21,6 @@ function formatTglHistori(tgl: string | null | undefined): string {
     const tahun = d.getFullYear();
     return `${hari}/${bulan}/${tahun}`;
 }
-import { WhatsAppButton } from './WhatsAppButton';
 
 interface Props {
     pasienId: string | null;
@@ -148,13 +147,13 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                 <div className="lg:w-1/3 space-y-4">
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                         <div className="w-16 h-16 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center mb-4 mx-auto text-xl font-bold">
-                            {pasien.nama_pasien.charAt(0)}
+                            <IdCard className="w-7 h-7" />
                         </div>
                         <h4 className="text-center font-bold text-slate-800 text-lg leading-tight mb-1">
-                            {pasien.nama_pasien}
+                            {pasien.kode_pasien}
                         </h4>
-                        <p className="text-center text-slate-500 text-sm mb-4">
-                            {pasien.no_kartu_bpjs}
+                        <p className="text-center text-slate-500 text-sm mb-4 font-mono">
+                            NOKA {pasien.noka}
                         </p>
 
                         <div className="flex justify-center items-center gap-2 mb-6">
@@ -190,15 +189,8 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                 <Activity className="w-4 h-4 text-slate-400 shrink-0" />
                                 <span>{pasien.fktp_asal}</span>
                             </div>
-                            <div className="flex items-center gap-3 text-slate-600">
-                                <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                                <span>{pasien.no_whatsapp || '-'}</span>
-                            </div>
                         </div>
 
-                        <div className="mt-6 pt-6 border-t border-slate-200 space-y-3">
-                            <WhatsAppButton pasien={pasien} tanggalEvaluasi={tanggalEvaluasi} variant="full" />
-                        </div>
                     </div>
                 </div>
 

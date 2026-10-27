@@ -24,7 +24,7 @@ class ResolvePasienDuplicates extends Command
      *
      * @var string
      */
-    protected $description = 'Handle patient BPJS duplicates (list, tag to allow unique index, or merge).';
+    protected $description = 'Handle patient NOKA duplicates (list, tag to allow unique index, or merge).';
 
     /**
      * Execute the console command.
@@ -46,30 +46,29 @@ class ResolvePasienDuplicates extends Command
 
     private function listDuplicates()
     {
-        $duplicates = DB::select("
-            SELECT no_kartu_bpjs, COUNT(*) as cnt, GROUP_CONCAT(id ORDER BY created_at ASC) as ids
-            FROM pasien_prb
-            GROUP BY no_kartu_bpjs
-            HAVING COUNT(*) > 1
-        ");
+        $duplicateGroups = DB::table('pasien_prb')
+            ->select('noka', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('noka')
+            ->having(DB::raw('COUNT(*)'), '>', 1)
+            ->get();
 
-        if (empty($duplicates)) {
-            $this->info("No duplicate BPJS numbers found.");
+        if ($duplicateGroups->isEmpty()) {
+            $this->info("No duplicate NOKA found.");
             return;
         }
 
-        $this->info("Found " . count($duplicates) . " duplicate BPJS groups:\n");
+        $this->info("Found " . $duplicateGroups->count() . " duplicate NOKA groups:\n");
 
-        foreach ($duplicates as $dup) {
-            $this->warn("BPJS: {$dup->no_kartu_bpjs} (Total: {$dup->cnt})");
-            $ids = explode(',', $dup->ids);
+        foreach ($duplicateGroups as $dup) {
+            $this->warn("NOKA: {$dup->noka} (Total: {$dup->cnt})");
+            $patients = PasienPrb::withCount('riwayatPengambilanObat')
+                ->where('noka', $dup->noka)
+                ->orderBy('created_at', 'asc')
+                ->get();
             
-            foreach ($ids as $index => $id) {
-                $pasien = PasienPrb::withCount('riwayatPengambilanObat')->find($id);
-                if ($pasien) {
-                    $mark = $index === 0 ? "[OLDEST/KEEP]" : "[DUPLICATE]";
-                    $this->line("  - {$mark} ID: {$pasien->id} | Kode: {$pasien->kode_pasien} | Nama: {$pasien->nama_pasien} | Riwayat: {$pasien->riwayat_pengambilan_obat_count}");
-                }
+            foreach ($patients as $index => $pasien) {
+                $mark = $index === 0 ? "[OLDEST/KEEP]" : "[DUPLICATE]";
+                $this->line("  - {$mark} ID: {$pasien->id} | Kode: {$pasien->kode_pasien} | Riwayat: {$pasien->riwayat_pengambilan_obat_count}");
             }
             $this->line("");
         }
@@ -84,38 +83,38 @@ class ResolvePasienDuplicates extends Command
     {
         $this->info("Tagging duplicates to resolve UNIQUE constraint violations...");
         
-        $duplicates = DB::select("
-            SELECT no_kartu_bpjs, COUNT(*) as cnt, GROUP_CONCAT(id ORDER BY created_at ASC) as ids
-            FROM pasien_prb
-            GROUP BY no_kartu_bpjs
-            HAVING COUNT(*) > 1
-        ");
+        $duplicateGroups = DB::table('pasien_prb')
+            ->select('noka', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('noka')
+            ->having(DB::raw('COUNT(*)'), '>', 1)
+            ->get();
 
         $taggedCount = 0;
 
-        foreach ($duplicates as $dup) {
-            $ids = explode(',', $dup->ids);
-            $keepId = array_shift($ids); // leave the oldest alone
+        foreach ($duplicateGroups as $dup) {
+            $patients = PasienPrb::where('noka', $dup->noka)
+                ->orderBy('created_at', 'asc')
+                ->get();
+
+            // leave the oldest alone
+            $keep = $patients->shift();
 
             $counter = 1;
-            foreach ($ids as $dupId) {
-                $pasien = PasienPrb::find($dupId);
-                if ($pasien) {
-                    $newBpjs = $pasien->no_kartu_bpjs . '-DUP' . $counter;
-                    
-                    // bypass validation in model by doing raw update or just save
-                    $pasien->no_kartu_bpjs = $newBpjs;
-                    $pasien->save();
-                    
-                    $this->line("Tagged ID {$pasien->id} ({$pasien->nama_pasien}) to BPJS: {$newBpjs}");
-                    $counter++;
-                    $taggedCount++;
-                }
+            foreach ($patients as $pasien) {
+                $newNoka = $pasien->noka . '-DUP' . $counter;
+                
+                // bypass validation in model by doing raw update or just save
+                $pasien->noka = $newNoka;
+                $pasien->save();
+                
+                $this->line("Tagged ID {$pasien->id} to NOKA: {$newNoka}");
+                $counter++;
+                $taggedCount++;
             }
         }
 
         $this->info("Tagged {$taggedCount} duplicate patients.");
-        $this->info("You can now safely add a UNIQUE database index to `no_kartu_bpjs`.");
+        $this->info("You can now safely add a UNIQUE database index to `noka`.");
     }
 
     private function mergePatients()
@@ -136,7 +135,7 @@ class ResolvePasienDuplicates extends Command
             return;
         }
 
-        $this->info("Merging {$deletePasien->nama_pasien} ({$deletePasien->kode_pasien}) INTO {$keepPasien->nama_pasien} ({$keepPasien->kode_pasien})...");
+        $this->info("Merging {$deletePasien->identitas()} INTO {$keepPasien->identitas()}...");
 
         DB::beginTransaction();
         try {

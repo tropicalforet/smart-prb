@@ -14,9 +14,7 @@ class ResepImport extends Model
 
     protected $fillable = [
         'kode_pasien',          // ditambahkan: ada di schema sejak 2026-09-28 tapi tidak di fillable
-        'no_kartu_bpjs',
-        'nama_pasien',
-        'no_whatsapp',
+        'noka',
         'fktp_asal',
         'diagnosis_prb',
         'tanggal_berobat',

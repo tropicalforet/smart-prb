@@ -1,17 +1,17 @@
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
-import { DashboardStats, PasienPRB, STATUS_KEPATUHAN_CONFIG } from '@/types';
+import { DashboardStats, PasienPRB } from '@/types';
 import { motion } from 'motion/react';
 import {
     Users,
     CheckCircle2,
     AlertTriangle,
     Clock,
-    CalendarDays,
     TrendingUp,
-    UserMinus,
+    Filter,
+    X,
 } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
     BarChart,
     Bar,
@@ -24,12 +24,33 @@ import {
     Pie,
     Cell,
     Legend,
+    Line,
+    ComposedChart,
 } from 'recharts';
+
+interface TrenItem {
+    bulan: string;
+    patuh: number;
+    tidak_patuh: number;
+    persentase: number;
+}
+
+interface PeriodeOption {
+    value: string;
+    label: string;
+}
 
 interface Props {
     statistik: DashboardStats;
     pasienAktif: PasienPRB[];
     tanggalEvaluasi: string;
+    trenKepatuhan: TrenItem[];
+    fktpOptions: string[];
+    periodeOptions: PeriodeOption[];
+    filters: {
+        filter_fktp: string;
+        filter_periode: string;
+    };
 }
 
 function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: number }) {
@@ -51,21 +72,55 @@ function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: 
     return <>{display}</>;
 }
 
-const CHART_COLORS = ['#10b981', '#f43f5e', '#f59e0b', '#6366f1', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'];
+export default function Dashboard({
+    statistik,
+    pasienAktif,
+    trenKepatuhan,
+    fktpOptions,
+    periodeOptions,
+    filters,
+}: Props) {
+    const [filterFktp, setFilterFktp]       = useState(filters.filter_fktp);
+    const [filterPeriode, setFilterPeriode] = useState(filters.filter_periode);
 
-export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: Props) {
-    const [evalDate, setEvalDate] = useState(tanggalEvaluasi);
+    const applyFilters = (fktp: string, periode: string) => {
+        const params: Record<string, string> = {};
+        if (fktp)    params.filter_fktp    = fktp;
+        if (periode) params.filter_periode = periode;
+        router.get('/', params, { preserveState: true, preserveScroll: true });
+    };
 
-    const handleDateChange = useCallback((date: string) => {
-        setEvalDate(date);
-        router.get('/', { tanggal_evaluasi: date }, { preserveState: true, preserveScroll: true });
-    }, []);
+    const handleFktpChange = (val: string) => {
+        setFilterFktp(val);
+        applyFilters(val, filterPeriode);
+    };
+
+    const handlePeriodeChange = (val: string) => {
+        setFilterPeriode(val);
+        applyFilters(filterFktp, val);
+    };
+
+    const resetFilters = () => {
+        setFilterFktp('');
+        setFilterPeriode('');
+        router.get('/', {}, { preserveState: true, preserveScroll: true });
+    };
+
+    const hasFilter = filterFktp || filterPeriode;
+
+    const handleCardClick = (filterKepatuhan: string) => {
+        const params: Record<string, string> = {};
+        if (filterKepatuhan) params.filter_kepatuhan = filterKepatuhan;
+        if (filterFktp)      params.filter_fktp      = filterFktp;
+        if (filterPeriode)   params.filter_periode   = filterPeriode;
+        router.get('/pasien', params);
+    };
 
     const kpiCards = [
         {
             title: 'Total Pasien',
             value: statistik.total_pasien,
-            subtitle: `${statistik.total_aktif} Aktif · ${statistik.total_pasif} Pasif`,
+            subtitle: 'Seluruh pasien terdaftar',
             icon: Users,
             gradient: 'from-slate-600 to-slate-700',
             shadowColor: 'shadow-slate-500/20',
@@ -96,46 +151,87 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
             icon: Clock,
             gradient: 'from-amber-500 to-amber-600',
             shadowColor: 'shadow-amber-500/25',
-            filterKepatuhan: 'Belum Diambil',
+            filterKepatuhan: 'Dalam Toleransi',
         },
     ];
 
-    const handleCardClick = (filterKepatuhan: string) => {
-        if (filterKepatuhan) {
-            router.get('/pasien', { filter_kepatuhan: filterKepatuhan, tanggal_evaluasi: evalDate });
-        } else {
-            router.get('/pasien', { tanggal_evaluasi: evalDate });
-        }
-    };
-
     // Donut chart data
     const donutData = [
-        { name: 'Patuh', value: statistik.patuh, color: '#10b981' },
-        { name: 'Tidak Patuh', value: statistik.tidak_patuh, color: '#f43f5e' },
-        { name: 'Toleransi', value: statistik.dalam_toleransi, color: '#f59e0b' },
+        { name: 'Patuh',       value: statistik.patuh,          color: '#10b981' },
+        { name: 'Tidak Patuh', value: statistik.tidak_patuh,    color: '#f43f5e' },
+        { name: 'Toleransi',   value: statistik.dalam_toleransi, color: '#f59e0b' },
     ].filter(d => d.value > 0);
 
     return (
         <AppLayout title="Dashboard">
             <Head title="Dashboard" />
 
-            {/* Header: Tanggal Evaluasi */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            {/* Header + Filter */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Dashboard Monitoring</h1>
                     <p className="text-sm text-slate-500 mt-1">Ringkasan kepatuhan pengambilan obat PRB</p>
                 </div>
-                <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-4 py-2.5 shadow-sm">
-                    <CalendarDays className="w-4 h-4 text-teal-600" />
-                    <label className="text-xs font-medium text-slate-500 whitespace-nowrap">Tanggal Evaluasi:</label>
-                    <input
-                        type="date"
-                        value={evalDate}
-                        onChange={(e) => handleDateChange(e.target.value)}
-                        className="text-sm font-semibold text-slate-800 border-0 bg-transparent focus:outline-none focus:ring-0 cursor-pointer"
-                    />
+
+                {/* Filter Bar */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <Filter className="w-3.5 h-3.5" />
+                        <span>Filter:</span>
+                    </div>
+
+                    {/* Filter FKTP */}
+                    <select
+                        value={filterFktp}
+                        onChange={e => handleFktpChange(e.target.value)}
+                        className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                        <option value="">Semua FKTP</option>
+                        {fktpOptions.map(f => (
+                            <option key={f} value={f}>{f}</option>
+                        ))}
+                    </select>
+
+                    {/* Filter Periode */}
+                    <select
+                        value={filterPeriode}
+                        onChange={e => handlePeriodeChange(e.target.value)}
+                        className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                        <option value="">Semua Periode</option>
+                        {periodeOptions.map(p => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                    </select>
+
+                    {/* Reset */}
+                    {hasFilter && (
+                        <button
+                            onClick={resetFilters}
+                            className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 border border-rose-200 rounded-lg px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 transition"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                            Reset
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {/* Filter active badge */}
+            {hasFilter && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                    {filterFktp && (
+                        <span className="inline-flex items-center gap-1.5 text-xs bg-teal-50 border border-teal-200 text-teal-700 rounded-full px-3 py-1">
+                            FKTP: <strong>{filterFktp}</strong>
+                        </span>
+                    )}
+                    {filterPeriode && (
+                        <span className="inline-flex items-center gap-1.5 text-xs bg-teal-50 border border-teal-200 text-teal-700 rounded-full px-3 py-1">
+                            Periode: <strong>{periodeOptions.find(p => p.value === filterPeriode)?.label ?? filterPeriode}</strong>
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -164,8 +260,8 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                 ))}
             </div>
 
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            {/* Charts Row 1: Donut + Bar FKTP */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                 {/* Donut Chart */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -203,9 +299,7 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                             </PieChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="flex items-center justify-center h-60 text-slate-400 text-sm">
-                            Belum ada data
-                        </div>
+                        <div className="flex items-center justify-center h-60 text-slate-400 text-sm">Belum ada data</div>
                     )}
                 </motion.div>
 
@@ -238,12 +332,79 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="flex items-center justify-center h-60 text-slate-400 text-sm">
-                            Belum ada data
-                        </div>
+                        <div className="flex items-center justify-center h-60 text-slate-400 text-sm">Belum ada data</div>
                     )}
                 </motion.div>
             </div>
+
+            {/* Chart Row 2: Tren Kepatuhan */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.5 }}
+                className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6"
+            >
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="text-sm font-semibold text-slate-700">Tren Kepatuhan 12 Bulan Terakhir</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">Persentase pasien patuh per bulan berdasarkan riwayat siklus</p>
+                    </div>
+                </div>
+                {trenKepatuhan.some(t => t.patuh + t.tidak_patuh > 0) ? (
+                    <ResponsiveContainer width="100%" height={280}>
+                        <ComposedChart data={trenKepatuhan} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                            <XAxis
+                                dataKey="bulan"
+                                tick={{ fontSize: 11, fill: '#64748b' }}
+                                interval={0}
+                                angle={-15}
+                                textAnchor="end"
+                                height={50}
+                            />
+                            <YAxis
+                                tick={{ fontSize: 11, fill: '#64748b' }}
+                                domain={[0, 100]}
+                                tickFormatter={(v) => `${v}%`}
+                            />
+                            <Tooltip
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }}
+                                formatter={(value: number, name: string) => {
+                                    if (name === 'persentase') return [`${value}%`, 'Kepatuhan'];
+                                    if (name === 'patuh')      return [value, 'Patuh'];
+                                    if (name === 'tidak_patuh') return [value, 'Tidak Patuh'];
+                                    return [value, name];
+                                }}
+                            />
+                            <Legend
+                                formatter={(value) => {
+                                    if (value === 'persentase') return <span className="text-xs text-slate-600">% Kepatuhan</span>;
+                                    if (value === 'patuh')      return <span className="text-xs text-slate-600">Patuh</span>;
+                                    if (value === 'tidak_patuh') return <span className="text-xs text-slate-600">Tidak Patuh</span>;
+                                    return value;
+                                }}
+                            />
+                            {/* Batang patuh & tidak patuh sebagai konteks */}
+                            <Bar dataKey="patuh"       name="patuh"       fill="#10b981" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
+                            <Bar dataKey="tidak_patuh" name="tidak_patuh" fill="#f43f5e" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
+                            {/* Garis persentase kepatuhan — axis utama */}
+                            <Line
+                                type="monotone"
+                                dataKey="persentase"
+                                name="persentase"
+                                stroke="#10b981"
+                                strokeWidth={2.5}
+                                dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
+                                activeDot={{ r: 6 }}
+                            />
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex items-center justify-center h-60 text-slate-400 text-sm">
+                        Belum ada data riwayat untuk ditampilkan
+                    </div>
+                )}
+            </motion.div>
 
             {/* Overdue Patient Alert Table */}
             {statistik.tidak_patuh > 0 && (
@@ -276,10 +437,14 @@ export default function Dashboard({ statistik, pasienAktif, tanggalEvaluasi }: P
                                     .map((p) => (
                                         <tr key={p.id} className="border-b border-slate-50 hover:bg-rose-50/50 transition-colors">
                                             <td className="px-4 py-3">
-                                                <div className="font-medium text-slate-800">{p.nama_pasien}</div>
-                                                <div className="text-xs text-slate-400">{p.kode_pasien}</div>
+                                                <div className="font-medium text-slate-800">{p.kode_pasien}</div>
+                                                <div className="text-xs text-slate-400 font-mono">NOKA {p.noka}</div>
                                             </td>
-                                            <td className="px-4 py-3 text-slate-600">{p.diagnosis_prb}</td>
+                                            <td className="px-4 py-3 text-slate-600">
+                                                {Array.isArray(p.diagnosis_prb)
+                                                    ? p.diagnosis_prb.join(', ')
+                                                    : p.diagnosis_prb}
+                                            </td>
                                             <td className="px-4 py-3 text-slate-600">
                                                 {p.tanggal_jadwal_berikutnya
                                                     ? (() => {

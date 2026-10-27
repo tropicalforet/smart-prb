@@ -15,21 +15,29 @@ import { PasienPRB } from '@/types';
  *
  * PENTING: Keyword ini hanya dipakai untuk mendeteksi BARIS HEADER,
  * bukan untuk memfilter baris data. Baris data dinilai berdasarkan
- * field wajib saja (nama_pasien, no_kartu_bpjs, dsb.).
+ * field wajib saja (noka, fktp_asal, dsb.).
  */
 const DATA_SHEET_HEADER_KEYWORDS: string[] = [
-    'nama pasien',
     'no. kartu bpjs',
     'no kartu bpjs',
     'no_kartu_bpjs',
-    'nama_pasien',
+    'noka tersandi',
+    'noka / noka tersandi',
+    'noka',
+    'noka sandi',
+    'faskes',
+    'diagnosa',
+    'tgl mulai',
     'no. faktur',
     'no faktur',
     'no_faktur',
     'tanggal mulai prb',
     'tanggal_mulai_prb',
     'fktp',
+    'fktp / faskes asal',
+    'faskes asal',
     'diagnosis',
+    'tanggal pengambilan obat terakhir',
 ];
 
 /**
@@ -87,12 +95,10 @@ function detectHeaderRow(ws: XLSX.WorkSheet): number {
 export interface ImportRow {
     no_faktur?: string;
     kode_pasien?: string;
-    nama_pasien: string;
-    no_kartu_bpjs: string;
-    no_whatsapp?: string;
+    noka: string;
     fktp_asal: string;
     diagnosis_prb: string[];
-    tanggal_mulai_prb: string;
+    tanggal_mulai_prb?: string;
     tanggal_berobat?: string;
     tanggal_pengambilan?: string;
 }
@@ -101,8 +107,10 @@ export interface ValidationResult {
     row: number;
     sheet: string;          // nama worksheet sumber
     data: ImportRow;
+    pengambilan: string[];  // tanggal ambil (ISO), urut — bisa >1 dari kolom bulan
     valid: boolean;
     errors: string[];
+    warnings: string[];     // tidak memblokir impor, hanya untuk dicek petugas
 }
 
 /**
@@ -150,9 +158,14 @@ export function parseExcelFile(
                     e.target?.result as ArrayBuffer
                 );
 
+                // cellDates: false → sel tanggal dibaca sebagai serial Excel lalu
+                // dikonversi tepat oleh formatDateValue (SSF.parse_date_code).
+                // Dengan cellDates: true, SheetJS 0.18 membuat objek Date yang
+                // meleset beberapa detik sebelum tengah malam di zona WIB
+                // (mis. 06/09/2018 23:59:48 untuk 07/09/2018) → tanggal mundur 1 hari.
                 const workbook = XLSX.read(buffer, {
                     type: 'array',
-                    cellDates: true,
+                    cellDates: false,
                 });
 
                 const allRows: Record<string, any>[]  = [];
@@ -261,25 +274,188 @@ export function parseExcelFile(
     });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// PENGENALAN HEADER LONGGAR
+// ─────────────────────────────────────────────────────────────────────────
+// Data apotek memakai nama kolom yang berbeda-beda per sheet
+// ("NOKA TERSANDI", "NOKA SANDI", "FASKES", "DIAGNOSA", "TGL MULAI ", ...).
+// Header dinormalisasi (huruf kecil, tanpa spasi/tanda baca) lalu dicocokkan
+// dengan pola, sehingga variasi penulisan tetap dikenali.
+
+function normKey(key: string): string {
+    return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Nilai pertama yang tidak kosong dari kolom yang header-nya cocok. */
+function pickByHeader(row: Record<string, any>, cocok: (nk: string) => boolean): any {
+    for (const [key, val] of Object.entries(row)) {
+        if (key.startsWith('_')) continue;
+        if (val === null || val === undefined || String(val).trim() === '') continue;
+        if (cocok(normKey(key))) return val;
+    }
+    return undefined;
+}
+
+const isHeaderNoka      = (nk: string) => nk.startsWith('noka') || nk.includes('kartubpjs');
+const isHeaderFktp      = (nk: string) => nk.startsWith('fktp') || nk.startsWith('faskes');
+const isHeaderDiagnosis = (nk: string) => nk.startsWith('diagnos');
+const isHeaderMulai     = (nk: string) => /^(tanggal|tgl)mulai/.test(nk);
+
+/** Nilai kosong / tanda "tidak ada" ("-") dianggap kosong. */
+function kosong(val: any): boolean {
+    if (val === null || val === undefined) return true;
+    const s = String(val).trim();
+    return s === '' || /^[-–—]+$/.test(s);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// KOLOM BULAN (format data apotek: MARET | APRIL | MEI berisi tanggal ambil)
+// ─────────────────────────────────────────────────────────────────────────
+
+const BULAN_HEADER: [RegExp, number][] = [
+    [/^(januari|jan)$/, 1],      [/^(februari|feb)$/, 2],          [/^(maret|mar)$/, 3],
+    [/^(april|apr)$/, 4],        [/^(mei|may)$/, 5],               [/^(juni|jun)$/, 6],
+    [/^(juli|jul)$/, 7],         [/^(agustus|agu|agt|aug)$/, 8],   [/^(september|sept|sep)$/, 9],
+    [/^(oktober|okt|oct)$/, 10], [/^(november|nov)$/, 11],         [/^(desember|des|dec)$/, 12],
+];
+
+/** "MARET", "APR TGL", "MEI TGL" → nomor bulan; header lain → null. */
+export function bulanDariHeader(header: string): number | null {
+    const nk = normKey(header).replace(/(tgl|tanggal)$/, '');
+    for (const [pola, bulan] of BULAN_HEADER) {
+        if (pola.test(nk)) return bulan;
+    }
+    return null;
+}
+
+/**
+ * Isi sel kolom bulan → daftar tanggal (hari) pengambilan.
+ *
+ *   20            → [20]
+ *   "1, 29"       → [1, 29]     (ambil 2x dalam sebulan)
+ *   "2 + 7", "9 &11", "01 dan 31" → [2, 7] / [9, 11] / [1, 31]
+ *   8.27          → [8, 27]     (koma terketik sebagai desimal) + peringatan
+ *   "-" / kosong  → []          (tidak ambil obat)
+ */
+export function parseHariAmbil(val: any): { hari: number[]; peringatan: string[] } {
+    const peringatan: string[] = [];
+    if (kosong(val)) return { hari: [], peringatan };
+
+    let token: string[];
+
+    if (typeof val === 'number' && !Number.isInteger(val)) {
+        // Excel menyimpan "8,27" (locale Indonesia) sebagai angka 8.27.
+        const [depan, belakangRaw] = String(val).split('.');
+        let belakang = Number(belakangRaw);
+        // Satu digit di belakang: "21,30" tersimpan sebagai 21.3 → pilih 30
+        // bila valid & lebih besar dari tanggal pertama, selain itu 3.
+        if (belakangRaw.length === 1 && belakang * 10 <= 31 && belakang * 10 > Number(depan)) {
+            belakang = belakang * 10;
+        }
+        token = [depan, String(belakang)];
+        peringatan.push(`Nilai ${val} dibaca sebagai tanggal ${token.join(' dan ')}`);
+    } else {
+        token = String(val)
+            .toLowerCase()
+            .replace(/dan|&|\+/g, ',')
+            .split(/[,;\s]+/)
+            .filter(Boolean);
+    }
+
+    const hari: number[] = [];
+    for (const t of token) {
+        if (!/^\d{1,2}$/.test(t) || Number(t) < 1 || Number(t) > 31) {
+            peringatan.push(`"${t}" bukan tanggal yang valid, dilewati`);
+            continue;
+        }
+        hari.push(Number(t));
+    }
+    return { hari, peringatan };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NORMALISASI DIAGNOSIS & FKTP
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Singkatan umum di data apotek → nama baku (sama dengan pilihan form). */
+const ALIAS_DIAGNOSIS: Record<string, string> = {
+    HT: 'Hipertensi', HIPERTENSI: 'Hipertensi',
+    DM: 'Diabetes Melitus', 'DIABETES MELITUS': 'Diabetes Melitus',
+    JANTUNG: 'Penyakit Jantung', PJK: 'Penyakit Jantung', 'PENYAKIT JANTUNG': 'Penyakit Jantung',
+    ASMA: 'Asma', PPOK: 'PPOK',
+    STROKE: 'Stroke', SRTOKE: 'Stroke',
+    EPI: 'Epilepsi', EPILEPSI: 'Epilepsi',
+    SKIZO: 'Skizofrenia', SKIZOFREN: 'Skizofrenia', SKIZOFRENIA: 'Skizofrenia', SCZ: 'Skizofrenia',
+    SLE: 'SLE',
+};
+
+/**
+ * "DM - HT", "DM + HT", "DM_HT_ASMA", "ASMA/PPOK", "Hipertensi, DM"
+ * → dipecah per diagnosis, singkatan umum dibakukan, duplikat dibuang.
+ */
+export function pecahDiagnosis(raw: any): string[] {
+    const list = Array.isArray(raw) ? raw.map(String) : String(raw ?? '').split(/[,;+/&_-]/);
+    const hasil: string[] = [];
+    for (const item of list) {
+        const t = item.replace(/\s+/g, ' ').trim();
+        if (!t) continue;
+        const baku = ALIAS_DIAGNOSIS[t.toUpperCase()] ?? t;
+        if (!hasil.includes(baku)) hasil.push(baku);
+    }
+    return hasil;
+}
+
+/** "B. SARI" dan "B SARI" → "B SARI" (titik & spasi ganda diseragamkan). */
+function normalisasiFktp(raw: any): string {
+    return String(raw ?? '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Tanggal mulai PRB. Selain format yang dikenali formatDateValue(),
+ * teks berformat bulan/tanggal (gaya Excel AS, mis. "11/19/2025") yang
+ * tidak valid sebagai DD/MM dicoba sebagai MM/DD dan diberi peringatan.
+ */
+function parseTanggalMulai(raw: any): { tanggal: string; peringatan?: string; gagal?: boolean } {
+    if (kosong(raw)) return { tanggal: '' };
+
+    const iso = formatDateValue(raw);
+    if (iso) return { tanggal: iso };
+
+    const m = String(raw).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+        const tukar = buildDateString(Number(m[3]), Number(m[1]), Number(m[2]));
+        if (tukar) {
+            return { tanggal: tukar, peringatan: `Tanggal mulai "${raw}" dibaca sebagai bulan/tanggal (${tukar})` };
+        }
+    }
+    return { tanggal: '', gagal: true };
+}
+
 /**
  * =========================================================
  * VALIDASI DATA IMPORT
  * =========================================================
  *
  * Menerima baris mentah hasil parseExcelFile() dan
- * mengembalikan ValidationResult[] untuk setiap baris.
+ * mengembalikan ValidationResult[] untuk setiap baris (= satu pasien).
  *
- * Lapisan filter kedua (defense-in-depth):
- * - Baris kosong total → dilewati (tidak masuk hasil)
- * - Baris contoh/instruksi → dilewati
+ * Mendukung dua bentuk file:
+ *   1. Template sistem — satu kolom "Tanggal Pengambilan Obat Terakhir".
+ *   2. Data apotek per bulan — kolom MARET / APRIL / MEI berisi tanggal
+ *      (hari) pengambilan. Tahun diambil dari opsi `tahunBulan`.
  *
  * Mapping kolom bersifat multi-alias: header dalam berbagai
  * variasi nama (dengan spasi, snake_case, kapitalisasi) tetap
  * dikenali selama mengandung kata kunci yang sama.
+ *
+ * `errors` membuat baris tidak valid; `warnings` hanya informasi yang
+ * perlu dicek petugas (baris tetap diimpor).
  */
 export function validateImportData(
-    rows: Record<string, any>[]
+    rows: Record<string, any>[],
+    opsi: { tahunBulan?: number } = {}
 ): ValidationResult[] {
+    const tahunBulan = opsi.tahunBulan ?? new Date().getFullYear();
     const results: ValidationResult[] = [];
 
     rows.forEach((row, idx) => {
@@ -287,23 +463,23 @@ export function validateImportData(
         // Baris kosong sudah difilter di parseExcelFile, ini hanya jaga-jaga.
         if (isEmptyRow(row)) return;
 
-        const errors: string[] = [];
+        const errors: string[]   = [];
+        const warnings: string[] = [];
 
         // ── Mapping kolom (toleran terhadap variasi nama header) ───────
 
-        const tanggalMulai =
-            formatDateValue(
-                row['Tanggal Mulai PRB'] ??
-                    row['tanggal_mulai_prb']
-            );
+        const mulai = parseTanggalMulai(
+            row['Tanggal Mulai PRB'] ?? row['tanggal_mulai_prb'] ?? pickByHeader(row, isHeaderMulai)
+        );
+        if (mulai.peringatan) warnings.push(mulai.peringatan);
 
-        const tanggalPengambilan =
-            formatDateValue(
-                row['Tanggal Pengambilan'] ??
-                    row['tanggal_pengambilan'] ??
-                    row['Pengambilan Terakhir'] ??
-                    row['tanggal_pengambilan_terakhir']
-            );
+        const rawPengambilan =
+            row['Tanggal Pengambilan Obat Terakhir'] ??
+            row['Tanggal Pengambilan'] ??
+            row['tanggal_pengambilan'] ??
+            row['Pengambilan Terakhir'] ??
+            row['tanggal_pengambilan_terakhir'];
+        const tanggalPengambilan = kosong(rawPengambilan) ? '' : formatDateValue(rawPengambilan);
 
         const noFaktur =
             String(
@@ -322,23 +498,16 @@ export function validateImportData(
                     row['tanggal_berobat']
             ) || undefined;
 
-        // No. BPJS: hapus spasi dan tanda baca yang tidak perlu,
-        // pertahankan leading zero
-        const rawBpjs = String(
-            row['No. Kartu BPJS'] ??
-                row['No Kartu BPJS'] ??
-                row['no_kartu_bpjs'] ??
-                ''
-        ).trim().replace(/[\s\-\.]/g, '');
+        // NOKA / NOKA tersandi: identitas pasien dari apotek.
+        // Header lama "No. Kartu BPJS" tetap diterima sebagai alias NOKA.
+        // Trim spasi di awal/akhir saja, jangan hapus spasi dalam NOKA.
+        const rawNoka = String(
+            row['NOKA / NOKA Tersandi'] ?? row['noka'] ?? pickByHeader(row, isHeaderNoka) ?? ''
+        ).trim();
 
-        // Diagnosis: terima array (dari backend round-trip) atau string
-        let rawDiagnosis = row['Diagnosis PRB'] ?? row['diagnosis_prb'] ?? '';
-        let diagnosisList: string[];
-        if (Array.isArray(rawDiagnosis)) {
-            diagnosisList = rawDiagnosis.map(String).map(d => d.trim()).filter(Boolean);
-        } else {
-            diagnosisList = String(rawDiagnosis).split(',').map(d => d.trim()).filter(Boolean);
-        }
+        const diagnosisList = pecahDiagnosis(
+            row['Diagnosis PRB'] ?? row['diagnosis_prb'] ?? pickByHeader(row, isHeaderDiagnosis) ?? ''
+        );
 
         const mapped: ImportRow = {
             no_faktur: noFaktur,
@@ -350,68 +519,72 @@ export function validateImportData(
                         ''
                 ).trim() || undefined,
 
-            nama_pasien:
-                String(
-                    row['Nama Pasien'] ??
-                        row['nama_pasien'] ??
-                        ''
-                ).trim(),
+            // Nama Pasien & No. HP sengaja TIDAK dibaca walaupun kolomnya ada
+            // di file — sesuai ketentuan etik penelitian.
+            noka: rawNoka,
 
-            no_kartu_bpjs: rawBpjs,
-
-            no_whatsapp:
-                String(
-                    row['No. WhatsApp'] ??
-                        row['No WhatsApp'] ??
-                        row['no_whatsapp'] ??
-                        ''
-                ).trim() || undefined,
-
-            fktp_asal:
-                String(
-                    row['FKTP Asal'] ??
-                        row['fktp_asal'] ??
-                        ''
-                ).trim(),
+            fktp_asal: normalisasiFktp(
+                row['FKTP / Faskes Asal'] ?? row['fktp_asal'] ?? pickByHeader(row, isHeaderFktp)
+            ),
 
             diagnosis_prb: diagnosisList,
 
-            tanggal_mulai_prb: tanggalMulai,
+            tanggal_mulai_prb: mulai.tanggal || undefined,
 
             tanggal_berobat: tanggalBerobat,
 
             tanggal_pengambilan: tanggalPengambilan || undefined,
         };
 
+        // ── Pengambilan dari kolom bulan (data apotek per bulan) ───────
+        const pengambilan: string[] = [];
+        for (const [header, val] of Object.entries(row)) {
+            if (header.startsWith('_')) continue;
+            const bulan = bulanDariHeader(header);
+            if (bulan === null) continue;
+
+            const { hari, peringatan } = parseHariAmbil(val);
+            peringatan.forEach(p => warnings.push(`${header.trim()}: ${p}`));
+
+            for (const h of hari) {
+                const iso = buildDateString(tahunBulan, bulan, h);
+                if (!iso) {
+                    warnings.push(`${header.trim()}: tanggal ${h} tidak ada di bulan tersebut, dilewati`);
+                } else if (!pengambilan.includes(iso)) {
+                    pengambilan.push(iso);
+                }
+            }
+        }
+        if (mapped.tanggal_pengambilan && !pengambilan.includes(mapped.tanggal_pengambilan)) {
+            pengambilan.push(mapped.tanggal_pengambilan);
+        }
+        pengambilan.sort();
+
         // ── Field wajib ────────────────────────────────────────────────
 
-        if (!mapped.nama_pasien) {
-            errors.push('Nama Pasien wajib diisi');
-        }
-
-        if (!mapped.no_kartu_bpjs) {
-            errors.push('No. Kartu BPJS wajib diisi');
+        if (!mapped.noka) {
+            errors.push('NOKA / NOKA Tersandi wajib diisi');
         }
 
         if (!mapped.fktp_asal) {
-            errors.push('FKTP Asal wajib diisi');
+            errors.push('FKTP / Faskes Asal wajib diisi');
         }
 
         if (!mapped.diagnosis_prb || mapped.diagnosis_prb.length === 0) {
             errors.push('Diagnosis PRB wajib diisi');
         }
 
-        if (!mapped.tanggal_mulai_prb) {
-            errors.push('Tanggal Mulai PRB wajib diisi');
+        // Tanggal Mulai PRB boleh kosong (pasien dianggap PRB Lama),
+        // tetapi jika diisi harus bisa dibaca.
+        if (mulai.gagal) {
+            errors.push('Tanggal Mulai PRB tidak valid. Gunakan format DD/MM/YYYY (contoh: 01/08/2026).');
+        } else if (!mapped.tanggal_mulai_prb) {
+            warnings.push('Tanggal Mulai PRB kosong — pasien dianggap PRB Lama');
         }
 
         // ── Validasi tanggal ───────────────────────────────────────────
 
-        if (mapped.tanggal_mulai_prb && !isValidDateString(mapped.tanggal_mulai_prb)) {
-            errors.push('Tanggal Mulai PRB tidak valid. Gunakan format DD/MM/YYYY (contoh: 01/08/2026).');
-        }
-
-        if (mapped.tanggal_pengambilan && !isValidDateString(mapped.tanggal_pengambilan)) {
+        if (!kosong(rawPengambilan) && !tanggalPengambilan) {
             errors.push('Tanggal Pengambilan tidak valid. Gunakan format DD/MM/YYYY (contoh: 04/10/2026).');
         }
 
@@ -420,27 +593,47 @@ export function validateImportData(
         }
 
         // Tanggal Pengambilan tidak boleh lebih awal dari Tanggal Mulai PRB
-        if (
-            mapped.tanggal_mulai_prb &&
-            mapped.tanggal_pengambilan &&
-            isValidDateString(mapped.tanggal_mulai_prb) &&
-            isValidDateString(mapped.tanggal_pengambilan)
-        ) {
-            if (new Date(mapped.tanggal_pengambilan) < new Date(mapped.tanggal_mulai_prb)) {
-                errors.push('Tanggal Pengambilan tidak boleh lebih awal dari Tanggal Mulai PRB.');
-            }
+        if (mapped.tanggal_mulai_prb && pengambilan.length > 0 && pengambilan[0] < mapped.tanggal_mulai_prb) {
+            errors.push('Tanggal Pengambilan tidak boleh lebih awal dari Tanggal Mulai PRB.');
         }
 
         results.push({
             row: idx + 1,
             sheet: String(row['_sheet_name'] ?? 'Sheet1'),
             data: mapped,
+            pengambilan,
             valid: errors.length === 0,
             errors,
+            warnings,
         });
     });
 
     return results;
+}
+
+/**
+ * =========================================================
+ * PAYLOAD IMPORT
+ * =========================================================
+ *
+ * Satu baris pasien dengan beberapa pengambilan → satu baris per
+ * pengambilan (urut tanggal), karena backend mencatat satu transaksi
+ * per baris dan menilai kepatuhan terhadap jadwal sebelumnya.
+ * Baris pasien tanpa pengambilan dikirim sekali (data profil saja).
+ */
+export function buildImportPayload(results: ValidationResult[]): ImportRow[] {
+    const payload: ImportRow[] = [];
+    for (const r of results) {
+        if (!r.valid) continue;
+        if (r.pengambilan.length === 0) {
+            payload.push({ ...r.data, tanggal_pengambilan: undefined });
+            continue;
+        }
+        for (const tanggal of r.pengambilan) {
+            payload.push({ ...r.data, tanggal_pengambilan: tanggal });
+        }
+    }
+    return payload;
 }
 
 /**
@@ -727,93 +920,56 @@ export function exportToExcel(
  * DOWNLOAD TEMPLATE IMPORT
  * =========================================================
  *
- * 10 kolom sesuai struktur backend import.
- * - No. BPJS dan No. WhatsApp diformat sebagai TEXT agar leading zero terjaga.
+ * 5 kolom sesuai format data dari apotek (ketentuan etik penelitian):
+ *   1. NOKA / NOKA Tersandi
+ *   2. FKTP / Faskes Asal
+ *   3. Diagnosis PRB
+ *   4. Tanggal Mulai PRB
+ *   5. Tanggal Pengambilan Obat Terakhir
+ *
+ * Nama pasien & No. HP TIDAK termasuk — tidak boleh dikumpulkan.
+ * - NOKA diformat sebagai TEXT agar angka 0 di depan terjaga.
  * - Kolom tanggal diberi format DD/MM/YYYY.
  * - Sheet "Petunjuk" disertakan untuk panduan petugas.
- * - Baris contoh di-style abu-abu agar mudah dibedakan dari data nyata.
  */
 export function downloadImportTemplate(): void {
     const workbook = XLSX.utils.book_new();
 
     // ── Sheet 1: Template Import ──────────────────────────────────────────
 
-    // Header dan baris contoh
     const headers = [
-        'No. Faktur / No. Transaksi Apotek',
-        'Kode Pasien',
-        'Nama Pasien',
-        'No. Kartu BPJS',
-        'No. WhatsApp',
-        'FKTP Asal',
+        'NOKA / NOKA Tersandi',
+        'FKTP / Faskes Asal',
         'Diagnosis PRB',
         'Tanggal Mulai PRB',
-        'Tanggal Berobat',
-        'Tanggal Pengambilan',
+        'Tanggal Pengambilan Obat Terakhir',
     ];
 
-    // Baris contoh — petugas diinstruksikan menghapus/mengganti baris ini.
-    // Tanggal menggunakan tahun saat ini agar selalu relevan.
     const tahunIni  = new Date().getFullYear();
     const contohRow = [
-        'CONTOH-INV-001',
-        'PRB-001',
-        '** CONTOH — HAPUS BARIS INI **',
-        '0001234567890',
-        '081234567890',
+        'PRB KPMA 001',
         'Puskesmas Kecamatan X',
-        'Hipertensi',
+        'Hipertensi, DM',
         `01/01/${tahunIni}`,
         `01/03/${tahunIni}`,
-        `03/03/${tahunIni}`,
     ];
 
-    // Buat worksheet dari array-of-arrays agar bisa mengontrol tipe cell
     const wsData: any[][] = [headers, contohRow];
     const worksheet = XLSX.utils.aoa_to_sheet(wsData);
 
-    // ── Cell formatting ───────────────────────────────────────────────────
-    // Lebar kolom
     worksheet['!cols'] = [
-        { wch: 28 }, // A — No. Faktur
-        { wch: 14 }, // B — Kode Pasien
-        { wch: 32 }, // C — Nama Pasien
-        { wch: 20 }, // D — No. BPJS (TEXT)
-        { wch: 18 }, // E — No. WA   (TEXT)
-        { wch: 32 }, // F — FKTP
-        { wch: 26 }, // G — Diagnosis
-        { wch: 20 }, // H — Tgl Mulai PRB
-        { wch: 18 }, // I — Tgl Berobat
-        { wch: 20 }, // J — Tgl Pengambilan
+        { wch: 24 }, // A — NOKA (TEXT)
+        { wch: 32 }, // B — FKTP
+        { wch: 36 }, // C — Diagnosis
+        { wch: 24 }, // D — Tgl Mulai PRB
+        { wch: 34 }, // E — Tgl Pengambilan Terakhir
     ];
 
-    // Paksa kolom No. BPJS (D) dan No. WA (E) sebagai TEXT
-    // agar leading zero tidak hilang ketika Excel membaca file
-    // Kolom D = index 3, Kolom E = index 4
-    // Format '@' = Text di Excel
-    const textColumns = [3, 4]; // D, E
-    for (let r = 1; r < 200; r++) { // baris data (baris 2–200, index 1–199)
-        textColumns.forEach(c => {
-            const cellRef = XLSX.utils.encode_cell({ r, c });
-            if (!worksheet[cellRef]) {
-                // Buat cell kosong bertipe text agar Excel tidak auto-convert
-                worksheet[cellRef] = { t: 's', v: '', z: '@' };
-            } else {
-                worksheet[cellRef].z = '@';
-                worksheet[cellRef].t = 's';
-                // Pastikan value tetap string
-                worksheet[cellRef].v = String(worksheet[cellRef].v ?? '');
-            }
-        });
-    }
-
-    // Format kolom tanggal (G, H, I = index 7, 8, 9) sebagai text DD/MM/YYYY
-    // Catatan: kita simpan sebagai string karena Excel date serial bisa
-    // berubah-ubah tergantung regional setting. Frontend parser sudah
-    // menangani format DD/MM/YYYY dan DD-MM-YYYY.
-    const dateColumns = [7, 8, 9]; // H = Tgl Mulai PRB, I = Tgl Berobat, J = Tgl Pengambilan
+    // Paksa kolom NOKA (A) & tanggal (D, E) sebagai TEXT: angka 0 di depan
+    // NOKA tidak hilang dan tanggal tetap DD/MM/YYYY (tidak diubah Excel).
+    const textColumns = [0, 3, 4];
     for (let r = 1; r < 200; r++) {
-        dateColumns.forEach(c => {
+        textColumns.forEach(c => {
             const cellRef = XLSX.utils.encode_cell({ r, c });
             if (!worksheet[cellRef]) {
                 worksheet[cellRef] = { t: 's', v: '', z: '@' };
@@ -838,60 +994,56 @@ export function downloadImportTemplate(): void {
         [''],
         ['1. Isi data pasien mulai dari BARIS 3 (baris 2 adalah contoh — hapus atau ganti).'],
         ['2. JANGAN mengubah nama kolom pada baris 1 (header).'],
+        ['3. Satu baris = satu pasien.'],
         [''],
         ['KOLOM & ATURAN PENGISIAN:'],
         [''],
-        ['No. Faktur / No. Transaksi Apotek',
-         'Identifier transaksi dari sumber data apotek.',
-         'Boleh kosong jika tidak tersedia.',
-         'Format bebas — isi sesuai data yang diberikan apotek.',
+        ['NOKA / NOKA Tersandi',
+         'Nomor kartu pasien atau NOKA yang sudah disandikan. WAJIB DIISI.',
+         'Format bebas (huruf, angka, spasi). Contoh: PRB KPMA 001',
         ],
-        ['Kode Pasien', 'Kode pasien di sistem PRB. Boleh kosong untuk pasien baru.'],
-        ['Nama Pasien', 'Nama lengkap pasien. WAJIB DIISI.'],
-        ['No. Kartu BPJS',
-         'Nomor BPJS 13 digit. WAJIB DIISI.',
-         'Ketik sebagai teks. Pastikan angka 0 di depan tidak hilang.',
-         'Contoh: 0001234567890',
+        ['FKTP / Faskes Asal',
+         'Nama Fasilitas Kesehatan Tingkat Pertama asal pasien. WAJIB DIISI.',
+         'Contoh: Puskesmas Kecamatan X, Klinik Pratama Y',
         ],
-        ['No. WhatsApp',
-         'Nomor WhatsApp pasien. Boleh kosong.',
-         'Ketik sebagai teks agar angka 0 di depan tidak hilang.',
-         'Contoh: 081234567890',
-        ],
-        ['FKTP Asal', 'Nama Fasilitas Kesehatan Tingkat Pertama. WAJIB DIISI.'],
         ['Diagnosis PRB',
-         'Diagnosis pasien. WAJIB DIISI. Boleh bebas sesuai data apotek.',
-         'Contoh: Hipertensi, Diabetes Melitus, Jantung Koroner',
-         'Untuk lebih dari satu diagnosis, pisahkan dengan koma.',
+         'Diagnosis pasien. WAJIB DIISI.',
+         'Lebih dari satu diagnosis: pisahkan dengan koma (tanda - + / juga diterima).',
+         'Singkatan HT, DM, PJK, dsb. dibakukan otomatis. Contoh: HT, DM atau DM-HT',
         ],
         ['Tanggal Mulai PRB',
-         'Tanggal pasien mulai program PRB. WAJIB DIISI.',
+         'Tanggal pasien mulai terdaftar program PRB. WAJIB DIISI.',
          'Format: DD/MM/YYYY',
          'Contoh: 01/08/2026',
         ],
-        ['Tanggal Berobat',
-         'Tanggal kunjungan berobat. Boleh kosong.',
+        ['Tanggal Pengambilan Obat Terakhir',
+         'Tanggal terakhir pasien mengambil obat di apotek. Boleh kosong untuk pasien baru.',
          'Format: DD/MM/YYYY',
+         'Catatan: Jika diisi, sistem menghitung jadwal berikutnya otomatis (+30 hari untuk PRB Lama).',
+         'Jika kosong dan Tanggal Mulai PRB diisi, jadwal dihitung dari mulai PRB +23 hari (PRB Baru).',
         ],
-        ['Tanggal Pengambilan',
-         'Tanggal pasien mengambil obat di apotek. Boleh kosong jika belum diambil.',
-         'Format: DD/MM/YYYY',
-         'Catatan: Jika kosong dan Tanggal Berobat diisi, sistem menggunakan Tanggal Berobat sebagai fallback.',
-        ],
+        [''],
+        ['KETENTUAN ETIK:'],
+        ['- JANGAN mencantumkan nama pasien maupun No. HP / No. Telepon.'],
+        ['- Jika file berisi kolom tersebut, sistem mengabaikannya dan tidak menyimpannya.'],
         [''],
         ['CATATAN PENTING:'],
         ['- Simpan file sebagai .xlsx sebelum upload.'],
-        ['- Satu baris = satu transaksi pengambilan obat.'],
-        ['- Pasien yang sama boleh muncul di beberapa baris (bulan berbeda).'],
-        ['- Sistem mengenali pasien berdasarkan No. Kartu BPJS, bukan nama.'],
-        ['- Import bersifat kumulatif: data bulan sebelumnya tidak akan terhapus.'],
-        ['- Jika No. Faktur sama dengan yang sudah ada, data akan di-UPDATE (bukan duplikat).'],
+        ['- Sistem mengenali pasien berdasarkan NOKA.'],
+        ['- Pasien yang NOKA-nya sudah ada akan diperbarui datanya, tidak diduplikasi.'],
+        ['- Import bersifat kumulatif: data pasien sebelumnya tidak akan terhapus.'],
+        ['- PRB Baru (tanggal mulai = bulan ini): jadwal pertama = mulai PRB + 23 hari.'],
+        ['- PRB Lama (tanggal mulai = bulan sebelumnya): jadwal berikutnya = terakhir ambil + 30 hari.'],
+        [''],
+        ['FORMAT PER BULAN (alternatif):'],
+        ['- Kolom tanggal pengambilan boleh diganti kolom per bulan (mis. MARET | APRIL | MEI) berisi tanggal ambil saja.'],
+        ['- Ambil 2x dalam sebulan: tulis "1, 29". Tidak ambil: isi "-". Tahun dipilih saat impor.'],
     ];
 
     const wsPetunjuk = XLSX.utils.aoa_to_sheet(petunjukData);
     wsPetunjuk['!cols'] = [
         { wch: 40 },
-        { wch: 60 },
+        { wch: 65 },
         { wch: 50 },
         { wch: 50 },
     ];

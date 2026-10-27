@@ -47,7 +47,7 @@ class RecalculatePasienLogic extends Command
                 }
 
                 $pasien = PasienPrb::find($r->pasien_prb_id);
-                $namaPasien = $pasien ? "{$pasien->kode_pasien} ({$pasien->nama_pasien})" : $r->pasien_prb_id;
+                $namaPasien = $pasien ? $pasien->identitas() : $r->pasien_prb_id;
 
                 $this->line("  Hapus riwayat {$id}");
                 $this->line("    Pasien   : {$namaPasien}");
@@ -74,22 +74,24 @@ class RecalculatePasienLogic extends Command
         if ($cleanDuplicates) {
             $this->info("\n--- LANGKAH 2: Hapus riwayat duplikat ---");
 
-            $duplicates = DB::select("
-                SELECT pasien_prb_id, DATE(tanggal_pengambilan) as tgl, COUNT(*) as cnt,
-                       GROUP_CONCAT(id ORDER BY created_at ASC SEPARATOR ',') as ids
-                FROM riwayat_pengambilan_obat
-                GROUP BY pasien_prb_id, DATE(tanggal_pengambilan)
-                HAVING COUNT(*) > 1
-            ");
+            $duplicates = DB::table('riwayat_pengambilan_obat')
+                ->select('pasien_prb_id', DB::raw('DATE(tanggal_pengambilan) as tgl'), DB::raw('COUNT(*) as cnt'))
+                ->groupBy('pasien_prb_id', DB::raw('DATE(tanggal_pengambilan)'))
+                ->having(DB::raw('COUNT(*)'), '>', 1)
+                ->get();
 
             $deletedCount = 0;
             foreach ($duplicates as $dup) {
-                $idList = explode(',', $dup->ids);
+                $idList = RiwayatPengambilanObat::where('pasien_prb_id', $dup->pasien_prb_id)
+                    ->whereDate('tanggal_pengambilan', $dup->tgl)
+                    ->orderBy('created_at', 'asc')
+                    ->pluck('id')
+                    ->toArray();
                 $keepId = array_shift($idList);
                 $deleteIds_dup = $idList;
 
                 $pasien = PasienPrb::find($dup->pasien_prb_id);
-                $nama = $pasien ? "{$pasien->kode_pasien} ({$pasien->nama_pasien})" : $dup->pasien_prb_id;
+                $nama = $pasien ? $pasien->identitas() : $dup->pasien_prb_id;
 
                 $this->line("  {$nama}: {$dup->cnt} entri pada {$dup->tgl}, simpan 1, hapus " . count($deleteIds_dup));
 
@@ -178,7 +180,7 @@ class RecalculatePasienLogic extends Command
             if ($oldJadwal      !== $newJadwal)      $changes['tanggal_jadwal_berikutnya']    = ($oldJadwal ?? 'NULL') . " → {$newJadwal}";
 
             if (!empty($changes)) {
-                $this->info("  {$pasien->kode_pasien} | {$pasien->nama_pasien}:");
+                $this->info("  {$pasien->identitas()}:");
                 foreach ($changes as $field => $val) {
                     $this->line("    {$field}: {$val}");
                 }
@@ -196,7 +198,7 @@ class RecalculatePasienLogic extends Command
                 $updated++;
             } else {
                 $noChange++;
-                $this->line("  {$pasien->kode_pasien} | {$pasien->nama_pasien}: OK (tidak ada perubahan)");
+                $this->line("  {$pasien->identitas()}: OK (tidak ada perubahan)");
             }
         }
 

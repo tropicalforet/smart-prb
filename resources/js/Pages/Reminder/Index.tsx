@@ -1,6 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import {
     Bell, Download, Copy, CheckCircle2, AlertCircle, X,
     ChevronDown, ChevronUp, MessageSquarePlus, Send, Users,
@@ -337,7 +337,7 @@ function ModalRingkasan({
 
                     {/* Catatan */}
                     <p className="text-xs text-slate-500 mb-4 bg-slate-50 rounded-lg px-3 py-2">
-                        Reminder yang berhasil tercatat di histori tindak lanjut setiap pasien.
+                        Setiap pasien berstatus Berhasil tercatat "Reminder WhatsApp dibuka" di histori tindak lanjut.
                         WhatsApp dibuka untuk setiap pasien dengan nomor valid — petugas tetap mengirim pesan secara manual.
                     </p>
 
@@ -419,7 +419,6 @@ export default function ReminderIndex({
     const [blasting, setBlasting]             = useState(false);
     const [blastProgress, setBlastProgress]   = useState(0);   // 0–100
     const [blastDone, setBlastDone]           = useState<{ ringkasan: BlastRingkasan; detail: BlastDetail[] } | null>(null);
-    const blastCsrfRef = useRef<string>('');
 
     // ── Filter ke backend ──────────────────────────────────────────────
     const applyFilters = useCallback((p: string, k: string, f: string) => {
@@ -481,17 +480,26 @@ export default function ReminderIndex({
         setBlasting(true);
         setBlastProgress(0);
 
-        // Ambil CSRF token dari meta tag
-        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '';
+        // CSRF: utamakan cookie XSRF-TOKEN (selalu diperbarui Laravel di tiap
+        // response, termasuk setelah login/logout via Inertia). Meta tag hanya
+        // dirender saat full page load, jadi bisa basi setelah session regenerate.
+        const xsrfCookie = document.cookie
+            .split('; ')
+            .find(c => c.startsWith('XSRF-TOKEN='))
+            ?.split('=')[1];
+        const csrfHeaders: Record<string, string> = xsrfCookie
+            ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie) }
+            : { 'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '' };
 
         try {
             // Panggil endpoint blast (JSON request)
             const response = await fetch('/reminder/blast', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
+                    ...csrfHeaders,
                 },
                 body: JSON.stringify({
                     pasien_ids:      Array.from(selected),
@@ -500,6 +508,15 @@ export default function ReminderIndex({
                     filter_kategori: kategori,
                 }),
             });
+
+            if (!response.ok) {
+                setBlasting(false);
+                const pesan = response.status === 419
+                    ? 'Sesi Anda sudah kedaluwarsa. Silakan muat ulang halaman lalu coba lagi.'
+                    : `Gagal mengirim reminder (kode ${response.status}). Silakan coba lagi.`;
+                alert(pesan);
+                return;
+            }
 
             const json = await response.json();
 
@@ -571,6 +588,10 @@ export default function ReminderIndex({
                     <p className="text-sm text-slate-500">
                         Filter pasien → pilih → kirim reminder WhatsApp → catat tindak lanjut.
                     </p>
+                    <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        Hanya menampilkan pasien yang memiliki nomor WhatsApp terdaftar
+                    </p>
                 </div>
             </div>
 
@@ -627,7 +648,7 @@ export default function ReminderIndex({
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
                         <Loader2 className="w-10 h-10 text-teal-500 mx-auto mb-4 animate-spin" />
-                        <p className="font-semibold text-slate-800 mb-1">Mengirim reminder...</p>
+                        <p className="font-semibold text-slate-800 mb-1">Membuka WhatsApp...</p>
                         <p className="text-sm text-slate-500 mb-4">Membuka WhatsApp satu per satu. Jangan tutup halaman ini.</p>
                         <div className="w-full bg-slate-100 rounded-full h-2.5">
                             <div
@@ -860,7 +881,7 @@ export default function ReminderIndex({
                             Pilih Semua ({pasienReminder.length})
                         </label>
                         <p className="text-xs text-slate-400">
-                            SMART PRB membuka WhatsApp secara manual satu per satu. Tidak ada pengiriman otomatis.
+                            Dashboard PRB membuka WhatsApp secara manual satu per satu. Tidak ada pengiriman otomatis.
                         </p>
                     </div>
                 </>

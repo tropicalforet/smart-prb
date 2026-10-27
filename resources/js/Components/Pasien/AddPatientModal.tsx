@@ -14,9 +14,7 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [formData, setFormData] = useState({
-        nama_pasien: '',
-        no_kartu_bpjs: '',
-        no_whatsapp: '',
+        noka: '',
         fktp_asal: '',
         diagnosis_prb: [] as string[],
         tanggal_mulai_prb: new Date().toISOString().split('T')[0],
@@ -28,19 +26,9 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         
-        if (name === 'no_kartu_bpjs') {
-            // Hanya izinkan angka, tolak yang lain
-            const onlyNums = value.replace(/\D/g, '');
-            // Maksimal 13 digit
-            const truncated = onlyNums.slice(0, 13);
-            setFormData(prev => ({ ...prev, [name]: truncated }));
-        } else if (name === 'no_whatsapp') {
-            const onlyNums = value.replace(/\D/g, '');
-            const truncated = onlyNums.slice(0, 13);
-            setFormData(prev => ({ ...prev, [name]: truncated }));
-        } else if (name === 'nama_pasien') {
-            const onlyLetters = value.replace(/[^a-zA-Z\s']/g, '');
-            setFormData(prev => ({ ...prev, [name]: onlyLetters }));
+        if (name === 'noka') {
+            // NOKA / NOKA tersandi: format bebas, maks 100 karakter
+            setFormData(prev => ({ ...prev, [name]: value.slice(0, 100) }));
         } else if (name === 'fktp_asal') {
             const cleanFktp = value.replace(/[^\p{L}\p{N}\p{P}\p{Z}]/gu, '');
             setFormData(prev => ({ ...prev, [name]: cleanFktp.slice(0, 255) }));
@@ -65,14 +53,14 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
         setErrors({}); // reset error sebelum submit baru
 
         // Rapikan spasi berlebih
-        const cleanName = formData.nama_pasien.replace(/\s+/g, ' ').trim();
+        const cleanNoka = formData.noka.trim();
         const cleanFktp = formData.fktp_asal.replace(/\s+/g, ' ').trim();
         
-        if (!cleanName || !cleanFktp || formData.diagnosis_prb.length === 0) return; // Prevent empty submission
+        if (!cleanNoka || !cleanFktp || formData.diagnosis_prb.length === 0) return; // Prevent empty submission
 
         const payload = {
             ...formData,
-            nama_pasien: cleanName,
+            noka: cleanNoka,
             fktp_asal: cleanFktp
         };
 
@@ -86,7 +74,7 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
             },
             onError: (errs) => {
                 setLoading(false);
-                // Tampilkan error validasi dari server (mis. BPJS sudah terdaftar)
+                // Tampilkan error validasi dari server (mis. NOKA sudah terdaftar)
                 const mapped: Record<string, string> = {};
                 Object.entries(errs).forEach(([k, v]) => {
                     mapped[k] = Array.isArray(v) ? v[0] : String(v);
@@ -114,63 +102,26 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Data Pribadi */}
                     <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Data Pribadi</h4>
-                        
+                        <h4 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Identitas Pasien</h4>
+
                         <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">Nama Pasien *</label>
-                            <input 
-                                type="text" 
-                                name="nama_pasien" 
-                                value={formData.nama_pasien} 
-                                onChange={handleChange} 
-                                required 
-                                pattern="^[a-zA-Z\s']*[a-zA-Z][a-zA-Z\s']*$"
-                                title="Nama pasien hanya boleh berisi huruf dan spasi."
-                                className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
+                            <label className="block text-xs font-medium text-slate-700 mb-1">NOKA / NOKA Tersandi *</label>
+                            <input
+                                type="text"
+                                name="noka"
+                                value={formData.noka}
+                                onChange={handleChange}
+                                required
+                                maxLength={100}
+                                placeholder="Contoh: PRB KPMA 001"
+                                className={`w-full rounded-lg text-sm font-mono focus:border-teal-500 focus:ring-teal-500 ${errors.noka ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`}
                             />
-                        </div>
-                        
-                        <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">No. Kartu BPJS *</label>
-                            <input 
-                                type="text" 
-                                name="no_kartu_bpjs" 
-                                value={formData.no_kartu_bpjs} 
-                                onChange={handleChange} 
-                                required 
-                                pattern="\d{13}"
-                                minLength={13}
-                                maxLength={13}
-                                inputMode="numeric"
-                                title="No. Kartu BPJS harus terdiri dari tepat 13 digit angka."
-                                className={`w-full rounded-lg text-sm focus:border-teal-500 focus:ring-teal-500 ${errors.no_kartu_bpjs ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`}
-                            />
-                            {formData.no_kartu_bpjs.length > 0 && formData.no_kartu_bpjs.length < 13 && (
-                                <p className="text-xs text-rose-500 mt-1">No. Kartu BPJS harus terdiri dari tepat 13 digit angka.</p>
+                            {errors.noka && (
+                                <p className="text-xs text-rose-600 mt-1 font-medium">⚠ {errors.noka}</p>
                             )}
-                            {errors.no_kartu_bpjs && (
-                                <p className="text-xs text-rose-600 mt-1 font-medium">⚠ {errors.no_kartu_bpjs}</p>
-                            )}
-                        </div>
-                        
-                        <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">No. WhatsApp</label>
-                            <input 
-                                type="text" 
-                                name="no_whatsapp" 
-                                value={formData.no_whatsapp} 
-                                onChange={handleChange} 
-                                placeholder="08..." 
-                                pattern="^$|\d{10,13}"
-                                minLength={10}
-                                maxLength={13}
-                                inputMode="numeric"
-                                title="No. WhatsApp harus terdiri dari 10–13 digit angka."
-                                className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
-                            />
-                            {formData.no_whatsapp.length > 0 && formData.no_whatsapp.length < 10 && (
-                                <p className="text-xs text-rose-500 mt-1">No. WhatsApp harus terdiri dari 10–13 digit angka.</p>
-                            )}
+                            <p className="text-xs text-slate-500 mt-1">
+                                Sesuai ketentuan etik, nama pasien dan No. HP tidak dicatat. Pasien dikenali dari NOKA.
+                            </p>
                         </div>
                     </div>
 
@@ -249,14 +200,6 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                                 name="tanggal_pengambilan_terakhir" 
                                 value={formData.tanggal_pengambilan_terakhir} 
                                 onChange={handleChange} 
-                                max={new Date().toISOString().split('T')[0]} 
-                                onInvalid={(e) => {
-                                    const target = e.target as HTMLInputElement;
-                                    if (target.validity.rangeOverflow) {
-                                        target.setCustomValidity('Tgl Pengambilan Terakhir tidak boleh lebih dari hari ini.');
-                                    }
-                                }}
-                                onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                                 className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
                             />
                             {formData.tanggal_pengambilan_terakhir && (

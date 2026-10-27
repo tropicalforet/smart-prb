@@ -39,9 +39,8 @@ class PasienPrbSeeder extends Seeder
             // Generate data pasien
             $pasien = PasienPrb::create([
                 'kode_pasien' => 'PRB-' . str_pad($i, 3, '0', STR_PAD_LEFT),
-                'nama_pasien' => $faker->name,
-                'no_kartu_bpjs' => $faker->numerify('0001########'),
-                'no_whatsapp' => '08' . $faker->numerify('12########'),
+                // NOKA tersandi dummy — nama & No. HP tidak disimpan (etik)
+                'noka' => 'PRB KPMA ' . str_pad($i, 3, '0', STR_PAD_LEFT),
                 'fktp_asal' => $faker->randomElement($fktpList),
                 'diagnosis_prb' => $faker->randomElements(PasienPrb::DIAGNOSIS_OPTIONS, rand(1, 3)),
                 'tanggal_mulai_prb' => $tanggalMulai->toDateString(),

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { PasienPRB } from '@/types';
 import { Button } from '../ui/Button';
 import { generateWhatsAppLink, getWhatsAppTemplate } from '@/lib/whatsapp-templates';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, AlertCircle } from 'lucide-react';
 
 interface Props {
     pasien: PasienPRB;
@@ -11,9 +11,11 @@ interface Props {
 }
 
 export function WhatsAppButton({ pasien, tanggalEvaluasi, variant = 'icon' }: Props) {
+    const hasWhatsApp = !!(pasien.no_whatsapp && pasien.no_whatsapp.length >= 10);
+
     const handleWaClick = () => {
-        if (!pasien.no_whatsapp) {
-            alert('Nomor WhatsApp pasien tidak tersedia.');
+        if (!hasWhatsApp) {
+            alert('❌ Nomor WhatsApp tidak tersedia untuk pasien ini.\n\nPasien ini tidak dapat dihubungi via WhatsApp karena nomor tidak terdaftar dalam sistem.');
             return;
         }
 
@@ -26,11 +28,23 @@ export function WhatsAppButton({ pasien, tanggalEvaluasi, variant = 'icon' }: Pr
         return (
             <button
                 onClick={handleWaClick}
-                disabled={!pasien.no_whatsapp}
-                className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title={pasien.no_whatsapp ? `Hubungi via WhatsApp (${pasien.no_whatsapp})` : 'Nomor WhatsApp tidak tersedia'}
+                disabled={!hasWhatsApp}
+                className={`p-1.5 rounded-lg transition-colors ${
+                    hasWhatsApp 
+                        ? 'text-emerald-600 hover:bg-emerald-50 cursor-pointer' 
+                        : 'text-slate-300 cursor-not-allowed'
+                }`}
+                title={
+                    hasWhatsApp 
+                        ? `Hubungi via WhatsApp: ${pasien.no_whatsapp}` 
+                        : '❌ Nomor WhatsApp tidak tersedia - pasien tidak dapat dihubungi via WhatsApp'
+                }
             >
-                <MessageCircle className="w-5 h-5" />
+                {hasWhatsApp ? (
+                    <MessageCircle className="w-5 h-5" />
+                ) : (
+                    <AlertCircle className="w-5 h-5" />
+                )}
             </button>
         );
     }
@@ -38,12 +52,23 @@ export function WhatsAppButton({ pasien, tanggalEvaluasi, variant = 'icon' }: Pr
     return (
         <Button
             onClick={handleWaClick}
-            disabled={!pasien.no_whatsapp}
+            disabled={!hasWhatsApp}
             variant="outline"
-            icon={<MessageCircle className="w-4 h-4 text-emerald-600" />}
+            icon={
+                hasWhatsApp ? (
+                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                ) : (
+                    <AlertCircle className="w-4 h-4 text-slate-400" />
+                )
+            }
             className="w-full justify-center"
+            title={
+                hasWhatsApp 
+                    ? `Kirim pesan ke ${pasien.no_whatsapp}` 
+                    : 'Nomor WhatsApp tidak tersedia untuk pasien ini'
+            }
         >
-            Kirim Pesan WhatsApp
+            {hasWhatsApp ? 'Kirim Pesan WhatsApp' : 'Nomor WA Tidak Tersedia'}
         </Button>
     );
 }

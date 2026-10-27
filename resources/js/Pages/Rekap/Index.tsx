@@ -9,10 +9,10 @@ import {
     Clock,
     UserMinus,
     Download,
-    CalendarDays
+    CalendarDays,
+    Percent,
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
-import { exportToExcel } from '@/lib/excel-utils';
 
 interface RekapData {
     fktp: string;
@@ -22,6 +22,7 @@ interface RekapData {
     tidak_patuh: number;
     pasif: number;
     belum_jatuh_tempo: number;
+    persentase_patuh: number | null;
 }
 
 interface Props {
@@ -32,6 +33,7 @@ interface Props {
         tidak_patuh: number;
         pasif: number;
         belum_jatuh_tempo: number;
+        persentase_patuh: number | null;
     };
     rekapFktp: RekapData[];
     filters: {
@@ -43,6 +45,9 @@ interface Props {
     fktpOptions: string[];
     periodeOptions: { value: string; label: string }[];
 }
+
+/** Persentase kepatuhan = Patuh / (Patuh + Tidak Patuh); '-' bila belum ada yang dinilai. */
+const formatPersen = (p: number | null) => (p === null ? '-' : `${p}%`);
 
 export default function RekapIndex({
     summary,
@@ -65,27 +70,17 @@ export default function RekapIndex({
     }, [filterPeriode, filterFktp, filterKepatuhan]);
 
     const handleExport = () => {
-        if (rekapFktp.length === 0) {
-            alert('Tidak ada data untuk diexport.');
-            return;
-        }
+        // Build URL dengan parameter filter yang sama dengan halaman saat ini
+        const params = new URLSearchParams();
+        
+        if (filterPeriode) params.append('filter_periode', filterPeriode);
+        if (filterFktp) params.append('filter_fktp', filterFktp);
+        if (filterKepatuhan) params.append('filter_kepatuhan', filterKepatuhan);
+        params.append('tanggal_evaluasi', filters.tanggal_evaluasi);
 
-        const dataToExport = rekapFktp.map(r => ({
-            'FKTP': r.fktp,
-            'Total Pasien': r.total,
-            'Patuh': r.patuh,
-            'Belum Diambil': r.dalam_toleransi,
-            'Tidak Patuh': r.tidak_patuh,
-            'Belum Jatuh Tempo': r.belum_jatuh_tempo,
-            'Pasif': r.pasif
-        }));
-
-        let filename = 'Rekap_Kepatuhan_PRB';
-        if (filterPeriode) filename += `_${filterPeriode}`;
-        if (filterFktp) filename += `_${filterFktp.replace(/\s+/g, '_')}`;
-        filename += '.xlsx';
-
-        exportToExcel(dataToExport, filename);
+        // Trigger download dengan membuka URL di tab baru
+        const exportUrl = `/rekap/export?${params.toString()}`;
+        window.open(exportUrl, '_blank');
     };
 
     const summaryCards = [
@@ -94,6 +89,12 @@ export default function RekapIndex({
             value: summary.total,
             icon: Users,
             gradient: 'from-slate-600 to-slate-700',
+        },
+        {
+            title: '% Kepatuhan',
+            value: formatPersen(summary.persentase_patuh),
+            icon: Percent,
+            gradient: 'from-teal-500 to-teal-600',
         },
         {
             title: 'Patuh',
@@ -176,8 +177,8 @@ export default function RekapIndex({
                     >
                         <option value="">Semua Kepatuhan</option>
                         <option value="Patuh">Patuh</option>
-                        {/* value="Belum Diambil" harus cocok dengan string yang dikembalikan KepatuhanService */}
-                        <option value="Belum Diambil">Dalam Toleransi</option>
+                        {/* value harus cocok dengan string status yang dikembalikan KepatuhanService */}
+                        <option value="Dalam Toleransi">Dalam Toleransi</option>
                         <option value="Tidak Patuh">Tidak Patuh</option>
                         <option value="Belum Jatuh Tempo">Belum Jatuh Tempo</option>
                         <option value="Pasif">Pasif</option>
@@ -185,13 +186,13 @@ export default function RekapIndex({
 
                     <Button onClick={handleExport} variant="outline" className="h-[42px]">
                         <Download className="w-4 h-4 mr-2" />
-                        Export Rekap
+                        Export Excel
                     </Button>
                 </div>
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
                 {summaryCards.map((card, idx) => (
                     <motion.div
                         key={card.title}
@@ -223,6 +224,7 @@ export default function RekapIndex({
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-rose-600">Tidak Patuh</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-blue-500">Blm Jatuh Tempo</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right">Pasif</th>
+                                <th className="px-6 py-4 whitespace-nowrap text-right text-teal-600">% Kepatuhan</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -235,11 +237,21 @@ export default function RekapIndex({
                                     <td className="px-6 py-4 text-right text-rose-600 font-medium">{row.tidak_patuh}</td>
                                     <td className="px-6 py-4 text-right text-blue-500 font-medium">{row.belum_jatuh_tempo ?? 0}</td>
                                     <td className="px-6 py-4 text-right text-slate-500">{row.pasif}</td>
+                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                        <div className="flex items-center justify-end gap-2">
+                                            {row.persentase_patuh !== null && (
+                                                <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-teal-500 rounded-full" style={{ width: `${row.persentase_patuh}%` }} />
+                                                </div>
+                                            )}
+                                            <span className="font-semibold text-teal-700 w-12">{formatPersen(row.persentase_patuh)}</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                             {rekapFktp.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                                         Tidak ada data rekap yang ditemukan.
                                     </td>
                                 </tr>
@@ -248,6 +260,11 @@ export default function RekapIndex({
                     </table>
                 </div>
             </div>
+
+            <p className="text-xs text-slate-500 mt-3">
+                % Kepatuhan = Patuh ÷ (Patuh + Tidak Patuh). Pasien Dalam Toleransi, Belum Jatuh Tempo, dan Pasif belum dinilai
+                sehingga tidak masuk perhitungan.
+            </p>
         </AppLayout>
     );
 }

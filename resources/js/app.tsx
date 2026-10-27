@@ -5,7 +5,7 @@ import { createInertiaApp } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
 
 createInertiaApp({
-    title: (title) => title ? `${title} — SMART PRB` : 'SMART PRB',
+    title: (title) => title ? `${title} — Dashboard PRB` : 'Dashboard PRB',
     resolve: (name) => {
         const pages = import.meta.glob('./Pages/**/*.tsx', { eager: true }) as Record<string, any>;
         return pages[`./Pages/${name}.tsx`];

@@ -40,16 +40,16 @@ class CleanRiwayatDuplicates extends Command
         $this->info("   Duplikat No. Faktur dihapus: {$deletedFaktur}");
 
         // -------------------------------------------------------
-        // 2. HAPUS DUPLIKAT BERDASARKAN BPJS + TANGGAL BEROBAT
+        // 2. HAPUS DUPLIKAT BERDASARKAN NOKA + TANGGAL BEROBAT
         //    (untuk record tanpa No. Faktur)
         // -------------------------------------------------------
         $this->info('');
-        $this->info('2. Mencari duplikat berdasarkan BPJS + Tanggal Berobat (tanpa No. Faktur)...');
+        $this->info('2. Mencari duplikat berdasarkan NOKA + Tanggal Berobat (tanpa No. Faktur)...');
 
         $duplikatBpjsTgl = DB::table('riwayat_pengambilan_obat')
             ->join('pasien_prb', 'riwayat_pengambilan_obat.pasien_prb_id', '=', 'pasien_prb.id')
             ->select(
-                'pasien_prb.no_kartu_bpjs',
+                'pasien_prb.noka',
                 'riwayat_pengambilan_obat.tanggal_berobat',
                 DB::raw('COUNT(*) as total'),
                 DB::raw('MIN(riwayat_pengambilan_obat.id) as keep_id')
@@ -59,16 +59,16 @@ class CleanRiwayatDuplicates extends Command
                   ->orWhere('riwayat_pengambilan_obat.no_faktur', '');
             })
             ->whereNotNull('riwayat_pengambilan_obat.tanggal_berobat')
-            ->groupBy('pasien_prb.no_kartu_bpjs', 'riwayat_pengambilan_obat.tanggal_berobat')
+            ->groupBy('pasien_prb.noka', 'riwayat_pengambilan_obat.tanggal_berobat')
             ->having(DB::raw('COUNT(*)'), '>', 1)
             ->get();
 
-        $deletedBpjs = 0;
+        $deletedNoka = 0;
         foreach ($duplikatBpjsTgl as $dup) {
             // Cari semua ID untuk kombinasi ini
             $allIds = DB::table('riwayat_pengambilan_obat')
                 ->join('pasien_prb', 'riwayat_pengambilan_obat.pasien_prb_id', '=', 'pasien_prb.id')
-                ->where('pasien_prb.no_kartu_bpjs', $dup->no_kartu_bpjs)
+                ->where('pasien_prb.noka', $dup->noka)
                 ->where('riwayat_pengambilan_obat.tanggal_berobat', $dup->tanggal_berobat)
                 ->where(function ($q) {
                     $q->whereNull('riwayat_pengambilan_obat.no_faktur')
@@ -78,9 +78,9 @@ class CleanRiwayatDuplicates extends Command
                 ->pluck('riwayat_pengambilan_obat.id');
 
             $deleted = RiwayatPengambilanObat::whereIn('id', $allIds)->delete();
-            $deletedBpjs += $deleted;
+            $deletedNoka += $deleted;
         }
-        $this->info("   Duplikat BPJS+Tgl Berobat dihapus: {$deletedBpjs}");
+        $this->info("   Duplikat NOKA+Tgl Berobat dihapus: {$deletedNoka}");
 
         // -------------------------------------------------------
         // 3. PERBAIKI STATUS KEPATUHAN SEMUA RIWAYAT
@@ -124,7 +124,7 @@ class CleanRiwayatDuplicates extends Command
         // -------------------------------------------------------
         $this->info('');
         $this->info('=== Selesai ===');
-        $this->info("Total duplikat dihapus: " . ($deletedFaktur + $deletedBpjs));
+        $this->info("Total duplikat dihapus: " . ($deletedFaktur + $deletedNoka));
         $this->info("Total status diperbaiki: {$fixed}");
         $this->info("Sisa record riwayat: " . RiwayatPengambilanObat::count());
 

@@ -1,34 +1,62 @@
 <?php
 
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasienPrbController;
 use App\Http\Controllers\TindakLanjutController;
 use App\Http\Controllers\RekapKepatuhanController;
-use App\Http\Controllers\ReminderController;
 use Illuminate\Support\Facades\Route;
 
-// Dashboard
-Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+// ─────────────────────────────────────────────
+// AUTH (guest only)
+// ─────────────────────────────────────────────
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
+});
 
-// Rekap Kepatuhan
-Route::get('/rekap', [RekapKepatuhanController::class, 'index'])->name('rekap.index');
+Route::post('/logout', [AuthController::class, 'logout'])
+    ->middleware('auth')
+    ->name('logout');
 
-// Reminder WhatsApp
-Route::get('/reminder', [ReminderController::class, 'index'])->name('reminder.index');
-Route::post('/reminder/blast', [ReminderController::class, 'blast'])->name('reminder.blast');
+// ─────────────────────────────────────────────
+// PROTECTED ROUTES (auth required)
+// ─────────────────────────────────────────────
+Route::middleware('auth')->group(function () {
 
-// Pasien CRUD
-Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']);
+    // Dashboard
+    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
-// Pasien aksi tambahan
-Route::post('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasi'])->name('pasien.realisasi');
-Route::put('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasiEdit'])->name('pasien.realisasi.edit');
-Route::put('pasien/{pasien}/jadwal', [PasienPrbController::class, 'updateJadwal'])->name('pasien.jadwal.update');
-Route::put('pasien/{pasien}/terakhir-ambil', [PasienPrbController::class, 'updateTerakhirAmbil'])->name('pasien.terakhir-ambil.update');
-Route::post('pasien/{pasien}/status', [PasienPrbController::class, 'updateStatus'])->name('pasien.status');
-Route::post('pasien/import/batch', [PasienPrbController::class, 'import'])->name('pasien.import');
-Route::post('pasien/hapus-massal', [PasienPrbController::class, 'destroyBulk'])->name('pasien.destroy-bulk');
-Route::get('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export');
+    // Rekap Kepatuhan
+    Route::get('/rekap', [RekapKepatuhanController::class, 'index'])->name('rekap.index');
+    Route::get('/rekap/export', [RekapKepatuhanController::class, 'export'])->name('rekap.export');
 
-// Tindak Lanjut
-Route::post('pasien/{pasien}/tindak-lanjut', [TindakLanjutController::class, 'store'])->name('tindak-lanjut.store');
+    // Reminder WhatsApp — DINONAKTIFKAN: sesuai ketentuan etik penelitian,
+    // No. HP pasien tidak boleh disimpan sehingga modul ini tidak punya data.
+    // ReminderController & Pages/Reminder masih ada di kode tetapi tidak dirutekan.
+
+    // Pasien CRUD
+    Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']);
+
+    // Pasien aksi tambahan
+    Route::post('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasi'])->name('pasien.realisasi');
+    Route::put('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasiEdit'])->name('pasien.realisasi.edit');
+    Route::put('pasien/{pasien}/jadwal', [PasienPrbController::class, 'updateJadwal'])->name('pasien.jadwal.update');
+    Route::put('pasien/{pasien}/terakhir-ambil', [PasienPrbController::class, 'updateTerakhirAmbil'])->name('pasien.terakhir-ambil.update');
+    Route::post('pasien/{pasien}/status', [PasienPrbController::class, 'updateStatus'])->name('pasien.status');
+    Route::post('pasien/import/batch', [PasienPrbController::class, 'import'])->name('pasien.import');
+    Route::post('pasien/hapus-massal', [PasienPrbController::class, 'destroyBulk'])->name('pasien.destroy-bulk');
+    Route::get('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export');
+
+    // Tindak Lanjut
+    Route::post('pasien/{pasien}/tindak-lanjut', [TindakLanjutController::class, 'store'])->name('tindak-lanjut.store');
+
+    // Audit Log
+    Route::get('/audit-log', [AuditLogController::class, 'index'])->name('audit-log.index');
+
+    // Akun
+    Route::get('/akun/password', [AuthController::class, 'showChangePassword'])->name('password.edit');
+    Route::put('/akun/password', [AuthController::class, 'updatePassword'])->name('password.update');
+
+});

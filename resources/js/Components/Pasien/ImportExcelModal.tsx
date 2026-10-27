@@ -1,22 +1,65 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
-import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info } from 'lucide-react';
-import { parseExcelFile, validateImportData, ValidationResult, ParseMeta, downloadImportTemplate } from '@/lib/excel-utils';
+import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info, TriangleAlert, CalendarDays } from 'lucide-react';
+import {
+    parseExcelFile, validateImportData, buildImportPayload, bulanDariHeader,
+    ValidationResult, ParseMeta, downloadImportTemplate,
+} from '@/lib/excel-utils';
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
 }
 
+interface HasilImpor {
+    baru: number;
+    diperbarui: number;
+    duplikat: number;
+    invalid: number;
+}
+
+/**
+ * Baris dikirim per potongan agar file besar (ribuan transaksi) tidak
+ * melewati batas waktu satu request. Urutan baris tetap dipertahankan —
+ * backend menilai tiap pengambilan terhadap jadwal dari pengambilan sebelumnya.
+ */
+const UKURAN_POTONGAN = 500;
+
+/** CSRF dari cookie XSRF-TOKEN (selalu terbaru), fallback meta tag. */
+function csrfHeaders(): Record<string, string> {
+    const xsrf = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='))?.split('=')[1];
+    return xsrf
+        ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) }
+        : { 'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '' };
+}
+
+const fmtTgl = (iso: string) => iso.split('-').reverse().join('/');
+
 export function ImportExcelModal({ isOpen, onClose }: Props) {
     const [file, setFile]             = useState<File | null>(null);
-    const [results, setResults]       = useState<ValidationResult[]>([]);
+    const [rawRows, setRawRows]       = useState<Record<string, any>[]>([]);
     const [parseMeta, setParseMeta]   = useState<ParseMeta | null>(null);
-    const [loading, setLoading]       = useState(false);
     const [parseError, setParseError] = useState<string | null>(null);
+    const [tahunBulan, setTahunBulan] = useState<number>(new Date().getFullYear());
+    const [hanyaPerluDicek, setHanyaPerluDicek] = useState(false);
+    const [progres, setProgres]       = useState<{ selesai: number; total: number } | null>(null);
+    const [hasil, setHasil]           = useState<HasilImpor | null>(null);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Format data apotek per bulan (kolom MARET/APRIL/MEI) → perlu tahun
+    const adaKolomBulan = useMemo(
+        () => rawRows.some(r => Object.keys(r).some(k => !k.startsWith('_') && bulanDariHeader(k) !== null)),
+        [rawRows]
+    );
+
+    const results: ValidationResult[] = useMemo(
+        () => validateImportData(rawRows, { tahunBulan }),
+        [rawRows, tahunBulan]
+    );
+    const payload = useMemo(() => buildImportPayload(results), [results]);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selected = e.target.files?.[0];
@@ -24,68 +67,98 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
 
         setFile(selected);
         setParseError(null);
-        setResults([]);
+        setRawRows([]);
         setParseMeta(null);
+        setHasil(null);
+        setUploadError(null);
 
         try {
             const data = await parseExcelFile(selected);
-
             // Ambil _parse_meta dari baris pertama
-            const meta: ParseMeta | null = (data[0]?.['_parse_meta'] as ParseMeta) ?? null;
-            setParseMeta(meta);
-
-            const validated = validateImportData(data);
-            setResults(validated);
+            setParseMeta((data[0]?.['_parse_meta'] as ParseMeta) ?? null);
+            setRawRows(data);
         } catch (err: any) {
             setParseError(err.message || 'Gagal memproses file Excel.');
         }
     };
 
-    const handleUpload = () => {
-        const validData = results.filter(r => r.valid).map(r => r.data);
-        if (validData.length === 0) {
+    const handleUpload = async () => {
+        if (payload.length === 0) {
             alert('Tidak ada baris data valid untuk diunggah.');
             return;
         }
 
-        setLoading(true);
-        router.post('/pasien/import/batch', {
-            data: validData as any,
-        }, {
-            onSuccess: () => {
-                setLoading(false);
-                onClose();
-                setFile(null);
-                setResults([]);
-                setParseMeta(null);
-                setParseError(null);
-            },
-            onError: (errors) => {
-                setLoading(false);
-                const errorMsg = Object.values(errors).flat().join('\n');
-                alert('Gagal mengunggah data:\n' + (errorMsg || 'Terjadi kesalahan validasi di server.'));
-            },
-            preserveScroll: true,
-        });
+        setUploadError(null);
+        const total: HasilImpor = { baru: 0, diperbarui: 0, duplikat: 0, invalid: 0 };
+        setProgres({ selesai: 0, total: payload.length });
+
+        for (let i = 0; i < payload.length; i += UKURAN_POTONGAN) {
+            const potongan = payload.slice(i, i + UKURAN_POTONGAN);
+            try {
+                const res = await fetch('/pasien/import/batch', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                    body: JSON.stringify({ data: potongan }),
+                });
+                if (!res.ok) {
+                    throw new Error(res.status === 419
+                        ? 'Sesi kedaluwarsa. Muat ulang halaman lalu impor lagi.'
+                        : `Server menolak data (kode ${res.status}).`);
+                }
+                const json: HasilImpor = await res.json();
+                (Object.keys(total) as (keyof HasilImpor)[]).forEach(k => { total[k] += json[k] ?? 0; });
+                setProgres({ selesai: i + potongan.length, total: payload.length });
+            } catch (err: any) {
+                // Potongan sebelumnya sudah tersimpan. Mengimpor ulang file yang
+                // sama aman: transaksi yang sudah ada terdeteksi sebagai duplikat.
+                setUploadError(
+                    `${err.message || 'Gagal mengunggah data.'} ` +
+                    `${i} dari ${payload.length} baris sudah tersimpan; impor ulang file ini untuk melanjutkan ` +
+                    `(baris yang sudah masuk akan dilewati sebagai duplikat).`
+                );
+                setProgres(null);
+                setHasil(total);
+                router.reload();
+                return;
+            }
+        }
+
+        setProgres(null);
+        setHasil(total);
+        router.reload();
     };
 
     const handleReset = () => {
         setFile(null);
-        setResults([]);
+        setRawRows([]);
         setParseMeta(null);
         setParseError(null);
+        setHasil(null);
+        setUploadError(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const validCount   = results.filter(r => r.valid).length;
-    const invalidCount = results.filter(r => !r.valid).length;
+    const handleClose = () => {
+        if (progres) return; // jangan tutup saat masih mengunggah
+        if (hasil) handleReset();
+        onClose();
+    };
+
+    const validCount     = results.filter(r => r.valid).length;
+    const invalidCount   = results.filter(r => !r.valid).length;
+    const peringatanCount = results.filter(r => r.valid && r.warnings.length > 0).length;
 
     const sheetNames = Array.from(new Set(results.map(r => r.sheet)));
     const sheetCount = sheetNames.length;
     const multiSheet = sheetCount > 1;
 
+    const ditampilkan = hanyaPerluDicek
+        ? results.filter(r => !r.valid || r.warnings.length > 0)
+        : results;
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Import Data Pasien & Resep PRB (Excel)" maxWidth="4xl">
+        <Modal isOpen={isOpen} onClose={handleClose} title="Import Data Pasien & Resep PRB (Excel)" maxWidth="4xl">
             <div className="space-y-6">
 
                 {!file ? (
@@ -99,7 +172,8 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                             sheet data dideteksi dari struktur header, bukan dari nama atau posisi sheet.
                         </p>
                         <p className="text-slate-400 text-xs mb-4">
-                            Sheet tanpa header data (mis. sheet Petunjuk) dilewati secara otomatis.
+                            Mendukung template sistem maupun data apotek per bulan
+                            (kolom <span className="font-medium">MARET / APRIL / MEI</span> berisi tanggal ambil obat).
                         </p>
                         <div className="flex gap-3">
                             <Button variant="outline" onClick={downloadImportTemplate} icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}>
@@ -131,13 +205,38 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         <div className="flex justify-end">
                             <Button variant="outline" onClick={handleReset}>Pilih File Lain</Button>
                         </div>
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            className="hidden"
-                            accept=".xlsx, .xls"
-                            onChange={handleFileChange}
-                        />
+                    </div>
+
+                ) : hasil ? (
+                    /* ── Selesai mengunggah ───────────────────────────────── */
+                    <div className="space-y-4">
+                        {uploadError ? (
+                            <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-lg p-4">
+                                <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                                <p className="text-sm text-rose-700">{uploadError}</p>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                                <p className="text-sm font-semibold text-emerald-800">Impor selesai.</p>
+                            </div>
+                        )}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {[
+                                { label: 'Pasien baru',           value: hasil.baru,       color: 'bg-emerald-50 text-emerald-700' },
+                                { label: 'Transaksi ditambahkan', value: hasil.diperbarui, color: 'bg-teal-50 text-teal-700' },
+                                { label: 'Duplikat dilewati',     value: hasil.duplikat,   color: 'bg-slate-100 text-slate-700' },
+                                { label: 'Gagal',                 value: hasil.invalid,    color: 'bg-rose-50 text-rose-700' },
+                            ].map(c => (
+                                <div key={c.label} className={`${c.color} rounded-xl p-3 text-center`}>
+                                    <div className="text-2xl font-bold">{c.value}</div>
+                                    <div className="text-xs font-medium mt-0.5">{c.label}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-end">
+                            <Button onClick={handleClose}>Tutup</Button>
+                        </div>
                     </div>
 
                 ) : (
@@ -151,14 +250,15 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                 <div>
                                     <div className="font-semibold text-slate-800">{file.name}</div>
                                     <div className="text-xs text-slate-500">
-                                        {results.length} baris data terdeteksi
+                                        {results.length} pasien terdeteksi
                                         {multiSheet
                                             ? ` dari ${sheetCount} sheet`
                                             : sheetCount === 1 ? ` — sheet: ${sheetNames[0]}` : ''}
+                                        {' · '}{payload.length} baris transaksi akan dikirim
                                     </div>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={handleReset}>
+                            <Button variant="ghost" size="sm" onClick={handleReset} disabled={!!progres}>
                                 Ganti File
                             </Button>
                         </div>
@@ -180,25 +280,55 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                             <span className="text-slate-400"> ({parseMeta.skippedSheets.join(', ')})</span>
                                         </span>
                                     )}
-                                    <span>Baris data terdeteksi: <strong>{parseMeta.totalDataRows}</strong></span>
                                 </div>
                             </div>
                         )}
 
-                        {/* Ringkasan validasi */}
-                        <div className="flex flex-wrap gap-3 mb-4">
-                            <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-                                <CheckCircle2 className="w-4 h-4" /> {validCount} Baris Valid
+                        {/* Tahun untuk kolom bulan */}
+                        {adaKolomBulan && (
+                            <div className="flex flex-wrap items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 mb-4">
+                                <CalendarDays className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>
+                                    File berformat <span className="font-semibold">per bulan</span> — kolom bulan hanya berisi tanggal.
+                                    Tahun data:
+                                </span>
+                                <input
+                                    type="number"
+                                    min={2000}
+                                    max={2100}
+                                    value={tahunBulan}
+                                    onChange={e => setTahunBulan(Number(e.target.value) || new Date().getFullYear())}
+                                    disabled={!!progres}
+                                    className="w-24 rounded-md border-amber-300 text-xs py-1 focus:border-teal-500 focus:ring-teal-500"
+                                />
                             </div>
+                        )}
+
+                        {/* Ringkasan validasi */}
+                        <div className="flex flex-wrap items-center gap-3 mb-4">
+                            <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                                <CheckCircle2 className="w-4 h-4" /> {validCount} Pasien Valid
+                            </div>
+                            {peringatanCount > 0 && (
+                                <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100">
+                                    <TriangleAlert className="w-4 h-4" /> {peringatanCount} Perlu Dicek
+                                </div>
+                            )}
                             {invalidCount > 0 && (
                                 <div className="flex items-center gap-2 text-sm text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">
                                     <AlertCircle className="w-4 h-4" /> {invalidCount} Tidak Valid
                                 </div>
                             )}
-                            {multiSheet && (
-                                <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                                    <FileSpreadsheet className="w-4 h-4" /> {sheetCount} Sheet data dibaca
-                                </div>
+                            {(peringatanCount > 0 || invalidCount > 0) && (
+                                <label className="flex items-center gap-2 text-xs text-slate-600 ml-auto cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={hanyaPerluDicek}
+                                        onChange={e => setHanyaPerluDicek(e.target.checked)}
+                                        className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                    />
+                                    Tampilkan hanya yang perlu dicek / tidak valid
+                                </label>
                             )}
                         </div>
 
@@ -207,11 +337,10 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                             <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
                             <div>
                                 <span className="font-semibold">Deteksi otomatis &amp; anti-duplikasi:</span>{' '}
-                                Sheet diidentifikasi dari <span className="font-medium">struktur header</span>,
-                                bukan dari nama atau posisi sheet. Sheet tanpa header data dilewati.
-                                Data valid masuk ke staging <code className="bg-sky-100 px-1 py-0.5 rounded font-mono text-sky-900">resep_import</code>.
-                                Duplikasi dicek via <span className="font-medium">No. Faktur</span> (UPDATE jika koreksi)
-                                dan <span className="font-medium">No. BPJS + Tanggal Berobat</span> sebagai fallback.
+                                Duplikasi dicek via <span className="font-medium">No. Faktur</span> (UPDATE jika koreksi),
+                                lalu <span className="font-medium">NOKA + tanggal</span> — mengimpor ulang file yang sama aman.
+                                Kolom Nama Pasien &amp; No. HP (jika ada di file) <span className="font-medium">diabaikan</span> sesuai ketentuan etik.
+                                Baris <span className="font-medium">Perlu Dicek</span> tetap diimpor; periksa keterangannya.
                             </div>
                         </div>
 
@@ -228,52 +357,51 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
 
                         {/* Tabel preview */}
                         {results.length > 0 && (
-                            <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg">
+                            <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-slate-50 sticky top-0 z-10 text-xs font-semibold text-slate-600">
                                         <tr>
                                             <th className="px-3 py-2 border-b">Baris</th>
                                             {multiSheet && <th className="px-3 py-2 border-b whitespace-nowrap">Sheet</th>}
-                                            <th className="px-3 py-2 border-b">No. Faktur</th>
-                                            <th className="px-3 py-2 border-b">Nama / BPJS</th>
-                                            <th className="px-3 py-2 border-b">WhatsApp</th>
+                                            <th className="px-3 py-2 border-b">NOKA</th>
                                             <th className="px-3 py-2 border-b">FKTP Asal</th>
                                             <th className="px-3 py-2 border-b">Diagnosis PRB</th>
-                                            <th className="px-3 py-2 border-b">Tgl Berobat</th>
+                                            <th className="px-3 py-2 border-b whitespace-nowrap">Mulai PRB</th>
+                                            <th className="px-3 py-2 border-b">Pengambilan</th>
                                             <th className="px-3 py-2 border-b">Status Validasi</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {results.map((r, i) => (
-                                            <tr key={i} className={r.valid ? 'hover:bg-slate-50/50' : 'bg-rose-50/50 hover:bg-rose-50'}>
+                                        {ditampilkan.map((r, i) => (
+                                            <tr key={i} className={!r.valid ? 'bg-rose-50/50 hover:bg-rose-50' : r.warnings.length ? 'bg-amber-50/40 hover:bg-amber-50' : 'hover:bg-slate-50/50'}>
                                                 <td className="px-3 py-2 text-slate-500 font-mono text-xs">{r.row}</td>
                                                 {multiSheet && (
                                                     <td className="px-3 py-2 text-xs text-blue-700 font-medium whitespace-nowrap">{r.sheet}</td>
                                                 )}
-                                                <td className="px-3 py-2 text-xs font-mono text-slate-700">{r.data.no_faktur || '-'}</td>
-                                                <td className="px-3 py-2">
-                                                    <div className="font-medium text-slate-800">{r.data.nama_pasien || '-'}</div>
-                                                    <div className="text-xs text-slate-500 font-mono">{r.data.no_kartu_bpjs || '-'}</div>
-                                                </td>
-                                                <td className="px-3 py-2 text-xs text-slate-600">{r.data.no_whatsapp || '-'}</td>
+                                                <td className="px-3 py-2 text-xs font-mono text-slate-800 whitespace-nowrap">{r.data.noka || '-'}</td>
                                                 <td className="px-3 py-2 text-xs text-slate-600">{r.data.fktp_asal || '-'}</td>
-                                                <td className="px-3 py-2">
-                                                    <div className="text-xs text-slate-700 font-medium">
-                                                        {r.data.diagnosis_prb?.length > 0 ? r.data.diagnosis_prb.join(', ') : '-'}
-                                                    </div>
+                                                <td className="px-3 py-2 text-xs text-slate-700 font-medium">
+                                                    {r.data.diagnosis_prb?.length > 0 ? r.data.diagnosis_prb.join(', ') : '-'}
+                                                </td>
+                                                <td className="px-3 py-2 text-xs text-slate-600 font-mono whitespace-nowrap">
+                                                    {r.data.tanggal_mulai_prb ? fmtTgl(r.data.tanggal_mulai_prb) : '-'}
                                                 </td>
                                                 <td className="px-3 py-2 text-xs text-slate-600 font-mono">
-                                                    {r.data.tanggal_berobat || r.data.tanggal_pengambilan || r.data.tanggal_mulai_prb || '-'}
+                                                    {r.pengambilan.length > 0 ? r.pengambilan.map(fmtTgl).join(', ') : '-'}
                                                 </td>
                                                 <td className="px-3 py-2">
-                                                    {r.valid ? (
-                                                        <span className="text-emerald-600 font-medium text-xs flex items-center gap-1">
-                                                            <CheckCircle2 className="w-3.5 h-3.5"/> Valid
-                                                        </span>
-                                                    ) : (
+                                                    {!r.valid ? (
                                                         <ul className="text-rose-600 text-xs list-disc pl-4 space-y-0.5">
                                                             {r.errors.map((err, eIdx) => <li key={eIdx}>{err}</li>)}
                                                         </ul>
+                                                    ) : r.warnings.length > 0 ? (
+                                                        <ul className="text-amber-700 text-xs list-disc pl-4 space-y-0.5">
+                                                            {r.warnings.map((w, wIdx) => <li key={wIdx}>{w}</li>)}
+                                                        </ul>
+                                                    ) : (
+                                                        <span className="text-emerald-600 font-medium text-xs flex items-center gap-1">
+                                                            <CheckCircle2 className="w-3.5 h-3.5"/> Valid
+                                                        </span>
                                                     )}
                                                 </td>
                                             </tr>
@@ -283,15 +411,31 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                             </div>
                         )}
 
+                        {/* Progres unggah */}
+                        {progres && (
+                            <div className="mt-4">
+                                <div className="flex justify-between text-xs text-slate-600 mb-1">
+                                    <span>Mengunggah… jangan tutup halaman ini.</span>
+                                    <span>{progres.selesai} / {progres.total} baris</span>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-2">
+                                    <div
+                                        className="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                                        style={{ width: `${Math.round((progres.selesai / progres.total) * 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
-                            <Button variant="ghost" onClick={onClose}>Batal</Button>
+                            <Button variant="ghost" onClick={handleClose} disabled={!!progres}>Batal</Button>
                             <Button
                                 onClick={handleUpload}
-                                isLoading={loading}
-                                disabled={validCount === 0}
+                                isLoading={!!progres}
+                                disabled={payload.length === 0}
                                 icon={<UploadCloud className="w-4 h-4"/>}
                             >
-                                Import {validCount} Data Valid ke Data Utama
+                                Import {validCount} Pasien ({payload.length} baris)
                             </Button>
                         </div>
                     </div>

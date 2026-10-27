@@ -1,9 +1,7 @@
 export interface PasienPRB {
     id: string;
     kode_pasien: string;
-    nama_pasien: string;
-    no_kartu_bpjs: string;
-    no_whatsapp: string | null;
+    noka: string; // NOKA / NOKA tersandi (nama & No. HP tidak disimpan — etik)
     fktp_asal: string;
     diagnosis_prb: DiagnosisPRB[];
     tanggal_mulai_prb: string;
@@ -45,9 +43,10 @@ export type DiagnosisPRB =
 export type StatusKepatuhan =
     | 'Patuh'
     | 'Tidak Patuh'
-    | 'Belum Diambil'
+    | 'Dalam Toleransi'
     | 'Belum Jatuh Tempo'
     | 'Belum Ada Jadwal'
+    | 'Tidak Ada Transaksi'
     | 'Pasif'
     | '—';
 
@@ -134,6 +133,8 @@ export interface Filters {
     filter_diagnosis: string;
     filter_fktp?: string;
     filter_periode?: string;
+    filter_jenis_prb?: string;
+    filter_early_warning?: string;
 }
 
 // Constants
@@ -171,9 +172,10 @@ export const ALASAN_PASIF_OPTIONS: AlasanPasif[] = [
 export const STATUS_KEPATUHAN_CONFIG: Record<StatusKepatuhan, { color: string; bgColor: string; borderColor: string; icon: string }> = {
     'Patuh': { color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200', icon: '✓' },
     'Tidak Patuh': { color: 'text-rose-700', bgColor: 'bg-rose-50', borderColor: 'border-rose-200', icon: '✗' },
-    'Belum Diambil': { color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', icon: '⏳' },
+    'Dalam Toleransi': { color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', icon: '⏳' },
     'Belum Jatuh Tempo': { color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: '📅' },
     'Belum Ada Jadwal': { color: 'text-slate-500', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', icon: '—' },
+    'Tidak Ada Transaksi': { color: 'text-slate-400', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', icon: 'N/A' },
     'Pasif': { color: 'text-slate-500', bgColor: 'bg-slate-100', borderColor: 'border-slate-200', icon: '⏸' },
     '—': { color: 'text-slate-500', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', icon: '—' },
 };
