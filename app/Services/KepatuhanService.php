@@ -801,32 +801,30 @@ class KepatuhanService
             . strtoupper(substr(str_replace('-', '', $pasien->id), 0, 12));
 
         // ------------------------------------------------------------------
-        // LANGKAH 1: Cek duplikat — dua lapis untuk keandalan maksimal.
+        // LANGKAH 1: Cek duplikat — pasien_prb_id + tanggal_pengambilan.
         //
-        // Lapis 1 (utama): cek no_faktur yang deterministik.
-        //   Lebih reliable di SQLite karena perbandingan string murni,
-        //   tidak bergantung pada format penyimpanan datetime.
+        // Duplikat ditentukan dari TANGGAL, bukan no_faktur: riwayat yang
+        // tanggalnya sudah dikoreksi (editRealisasi) tetap memakai no_faktur
+        // lama yang memuat tanggal lama. Mengecek no_faktur akan salah
+        // menolak realisasi baru di tanggal lama tersebut.
         //
-        // Lapis 2 (fallback): cek pasien_prb_id + tanggal_pengambilan
-        //   dengan LIKE untuk menangkap kasus di mana riwayat tersimpan
-        //   dengan no_faktur berbeda (mis. dari import Excel) tapi tanggal
-        //   pengambilan sama.
-        //
-        // Jika salah satu cek menemukan duplikat → return langsung.
-        // Tidak ada INSERT, tidak ada UPDATE master.
+        // Jika duplikat → return langsung. Tidak ada INSERT/UPDATE.
         // ------------------------------------------------------------------
-        $sudahAdaByFaktur = RiwayatPengambilanObat::where('no_faktur', $noFakturInternal)
-            ->exists();
-
         $sudahAdaByTanggal = RiwayatPengambilanObat::where('pasien_prb_id', $pasien->id)
             ->where('tanggal_pengambilan', 'like', $realisasi->toDateString() . '%')
             ->exists();
 
-        if ($sudahAdaByFaktur || $sudahAdaByTanggal) {
-            // Realisasi pada tanggal ini sudah tercatat sebelumnya.
-            // Jangan INSERT riwayat baru, jangan update master.
+        if ($sudahAdaByTanggal) {
             return ['duplikat' => true];
         }
+
+        // no_faktur wajib unik (UNIQUE constraint). Bila sudah dipakai riwayat
+        // yang tanggalnya dikoreksi, beri akhiran -2, -3, ...
+        $kandidat = $noFakturInternal;
+        for ($n = 2; RiwayatPengambilanObat::where('no_faktur', $kandidat)->exists(); $n++) {
+            $kandidat = $noFakturInternal . '-' . $n;
+        }
+        $noFakturInternal = $kandidat;
 
         // ------------------------------------------------------------------
         // LANGKAH 2: Tangkap jadwal_target siklus SEBELUM dimajukan.
@@ -1207,6 +1205,28 @@ class KepatuhanService
         }
         $pasienAktif = $query->get();
 
+        // Pasien hanya bisa Patuh/Tidak Patuh di bulan yang punya siklus:
+        // jadwal_target riwayat (yang ada tanggal ambilnya) atau jadwal aktif
+        // master — sama dengan langkah 1 & 2 tentukanStatusKepatuhanPeriode().
+        // Bulan lain pasti "Tidak Ada Transaksi", jadi tidak perlu dievaluasi.
+        $pasienPerBulan = [];
+        foreach ($pasienAktif as $pasien) {
+            $bulanSiklus = [];
+            foreach ($pasien->riwayatPengambilanObat as $r) {
+                $jadwal = self::tanggalIso($r, 'jadwal_target');
+                if ($jadwal !== null && self::tanggalIso($r, 'tanggal_pengambilan') !== null) {
+                    $bulanSiklus[substr($jadwal, 0, 7)] = true;
+                }
+            }
+            $jadwalAktif = self::tanggalIso($pasien, 'tanggal_jadwal_berikutnya');
+            if ($jadwalAktif !== null) {
+                $bulanSiklus[substr($jadwalAktif, 0, 7)] = true;
+            }
+            foreach (array_keys($bulanSiklus) as $b) {
+                $pasienPerBulan[$b][] = $pasien;
+            }
+        }
+
         $tren = [];
         for ($i = $jumlahBulan - 1; $i >= 0; $i--) {
             $bulan   = $akhir->copy()->subMonths($i);
@@ -1214,7 +1234,7 @@ class KepatuhanService
 
             $patuh = 0;
             $tidakPatuh = 0;
-            foreach ($pasienAktif as $pasien) {
+            foreach ($pasienPerBulan[$periode] ?? [] as $pasien) {
                 $status = $this->tentukanStatusKepatuhanPeriode($pasien, $periode, $evaluasi)['status'];
                 if ($status === 'Patuh')       $patuh++;
                 if ($status === 'Tidak Patuh') $tidakPatuh++;

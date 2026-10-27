@@ -247,7 +247,8 @@ class PasienImportTest extends TestCase
 
     public function test_tambah_pasien_manual_dengan_noka_tersandi(): void
     {
-        $this->post(route('pasien.store'), [
+        // Kembali ke halaman asal (filter & pencarian tetap terjaga)
+        $this->from(route('pasien.index'))->post(route('pasien.store'), [
             'noka'              => 'PRB KPMA 010',
             'fktp_asal'         => 'Klinik Pratama Y',
             'diagnosis_prb'     => ['Hipertensi'],

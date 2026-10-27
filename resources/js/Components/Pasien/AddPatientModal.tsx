@@ -105,16 +105,17 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                         <h4 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Identitas Pasien</h4>
 
                         <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">NOKA / NOKA Tersandi *</label>
+                            <label htmlFor="noka" className="block text-xs font-medium text-slate-700 mb-1">NOKA / NOKA Tersandi *</label>
                             <input
                                 type="text"
+                                id="noka"
                                 name="noka"
                                 value={formData.noka}
                                 onChange={handleChange}
                                 required
                                 maxLength={100}
                                 placeholder="Contoh: PRB KPMA 001"
-                                className={`w-full rounded-lg text-sm font-mono focus:border-teal-500 focus:ring-teal-500 ${errors.noka ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:border-teal-500 focus:ring-teal-500 ${errors.noka ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`}
                             />
                             {errors.noka && (
                                 <p className="text-xs text-rose-600 mt-1 font-medium">⚠ {errors.noka}</p>
@@ -150,9 +151,10 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                         </div>
                         
                         <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">FKTP Asal (Perujuk) *</label>
+                            <label htmlFor="fktp_asal" className="block text-xs font-medium text-slate-700 mb-1">FKTP Asal (Perujuk) *</label>
                             <input 
                                 type="text" 
+                                id="fktp_asal"
                                 name="fktp_asal" 
                                 value={formData.fktp_asal} 
                                 onChange={handleChange} 
@@ -165,15 +167,16 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                                     }
                                 }}
                                 onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
-                                className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500" 
                             />
                         </div>
                         
                         <div className="grid grid-cols-1 gap-3">
                             <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Tgl Mulai PRB *</label>
+                                <label htmlFor="tanggal_mulai_prb" className="block text-xs font-medium text-slate-700 mb-1">Tgl Mulai PRB *</label>
                                 <input 
                                     type="date" 
+                                    id="tanggal_mulai_prb"
                                     name="tanggal_mulai_prb" 
                                     value={formData.tanggal_mulai_prb} 
                                     onChange={handleChange} 
@@ -185,25 +188,27 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                                         }
                                     }}
                                     onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
-                                    className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500" 
                                 />
                                 {!formData.tanggal_pengambilan_terakhir && formData.tanggal_mulai_prb && (
-                                    <p className="text-[10px] text-teal-600 mt-1">Jika belum ada riwayat pengambilan, jadwal dihitung dari Tgl Mulai PRB + 23 hari.</p>
+                                    <p className="text-[10px] text-teal-600 mt-1">Jadwal pertama = Tgl Mulai PRB + 23 hari bila mulai bulan ini (PRB Baru), + 30 hari bila mulai bulan sebelumnya (PRB Lama).</p>
                                 )}
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">Tgl Pengambilan Terakhir (Jika ada)</label>
+                            <label htmlFor="tanggal_pengambilan_terakhir" className="block text-xs font-medium text-slate-700 mb-1">Tgl Pengambilan Terakhir (Jika ada)</label>
                             <input 
                                 type="date" 
-                                name="tanggal_pengambilan_terakhir" 
-                                value={formData.tanggal_pengambilan_terakhir} 
+                                id="tanggal_pengambilan_terakhir"
+                                name="tanggal_pengambilan_terakhir"
+                                value={formData.tanggal_pengambilan_terakhir}
+                                max={new Date().toLocaleDateString('en-CA')}
                                 onChange={handleChange} 
-                                className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500" 
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500" 
                             />
                             {formData.tanggal_pengambilan_terakhir && (
-                                <p className="text-[10px] text-teal-600 mt-1">Jadwal berikutnya dihitung otomatis dari tanggal pengambilan terakhir + 30 hari.</p>
+                                <p className="text-[10px] text-teal-600 mt-1">Jadwal berikutnya = tanggal pengambilan + 30 hari (PRB Lama), atau + 23 hari bila mulai PRB di bulan yang sama (PRB Baru).</p>
                             )}
                         </div>
                     </div>

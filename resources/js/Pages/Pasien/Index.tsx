@@ -56,8 +56,8 @@ export default function PasienIndex({
     const [showFilters, setShowFilters] = useState(false);
     
     // Sorting states
-    const [sortBy, setSortBy] = useState(filters.sort_by || 'urgensi');
-    const [sortOrder, setSortOrder] = useState(filters.sort_order || 'desc');
+    const [sortBy, setSortBy] = useState(filters.sort_by || 'kode_pasien');
+    const [sortOrder, setSortOrder] = useState(filters.sort_order || 'asc');
 
     // Modal states
     const [addModalOpen, setAddModalOpen] = useState(false);
@@ -223,8 +223,8 @@ export default function PasienIndex({
     const resetFilters = () => {
         setSearchTerm('');
         setEvalDate(new Date().toLocaleDateString('en-CA')); // format YYYY-MM-DD
-        setSortBy('urgensi');
-        setSortOrder('desc');
+        setSortBy('kode_pasien');
+        setSortOrder('asc');
         router.get('/pasien', {}, { preserveState: true, preserveScroll: true });
     };
     
@@ -310,8 +310,8 @@ export default function PasienIndex({
             <Head title="Data Pasien PRB" />
 
             {/* Header Actions */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div className="flex-1 max-w-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+                <div className="flex-1 w-full xl:max-w-md">
                     <div className="relative group">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Search className="w-5 h-5 text-slate-400 group-focus-within:text-teal-500 transition-colors" />
@@ -355,12 +355,16 @@ export default function PasienIndex({
                             onChange={(e) => handleSortChange(e.target.value)}
                             title="Urutkan Berdasarkan"
                         >
-                            <option value="urgensi">🔥 Urgensi</option>
-                            <option value="kode_pasien">🔢 Kode Pasien</option>
-                            <option value="nama_pasien">👤 Nama</option>
-                            <option value="tanggal_mulai_prb">📅 Mulai PRB</option>
-                            <option value="tanggal_pengambilan_terakhir">📦 Terakhir Ambil</option>
-                            <option value="tanggal_jadwal_berikutnya">⏰ Jadwal Berikutnya</option>
+                            {/* Urut sesuai kolom tabel, kiri → kanan */}
+                            <option value="kode_pasien">Kode Pasien</option>
+                            <option value="noka">NOKA</option>
+                            <option value="jenis_prb">Jenis PRB</option>
+                            <option value="fktp_asal">FKTP Asal</option>
+                            <option value="tanggal_mulai_prb">Mulai PRB</option>
+                            <option value="tanggal_pengambilan_terakhir">Terakhir Ambil Obat</option>
+                            <option value="tanggal_jadwal_berikutnya">
+                                {filters.filter_periode ? 'Jadwal Pengambilan' : 'Jadwal Selanjutnya'}
+                            </option>
                         </select>
                         <button
                             onClick={toggleSortOrder}
@@ -474,7 +478,7 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
                                         Semua Status
@@ -506,7 +510,7 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
                                         Semua Jenis
@@ -536,7 +540,7 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
                                         Semua Kepatuhan
@@ -571,7 +575,7 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
                                         Semua Warning
@@ -607,7 +611,7 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border-slate-300 rounded-lg focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
                                         Semua FKTP
@@ -841,7 +845,7 @@ export default function PasienIndex({
                                                                 type="date"
                                                                 value={terakhirValue}
                                                                 onChange={(e) => setTerakhirValue(e.target.value)}
-                                                                className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
+                                                                className="rounded border border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
                                                             />
                                                             <button onClick={() => handleSaveTerakhir(pasien.id)} className="text-teal-600 hover:text-teal-700 p-1 bg-teal-50 hover:bg-teal-100 rounded transition-colors" title="Simpan">
                                                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
@@ -943,7 +947,7 @@ export default function PasienIndex({
                                                 {/* 7. STATUS KEPATUHAN */}
                                                 <td className="px-5 py-4 whitespace-nowrap">
                                                     {pasien.status === 'Pasif' ? (
-                                                        <StatusBadge status="Tidak Berlaku" />
+                                                        <StatusBadge status="Pasif" />
                                                     ) : (
                                                         <StatusBadge
                                                             status={
@@ -956,7 +960,8 @@ export default function PasienIndex({
 
                                                 {/* 9. AKSI */}
                                                 <td className="px-5 py-4 text-center whitespace-nowrap">
-                                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {/* Selalu terlihat (layar sentuh tidak punya hover); lebih tegas saat baris di-hover */}
+                                                    <div className="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
 
                                                         <button
                                                             onClick={() =>
@@ -966,6 +971,7 @@ export default function PasienIndex({
                                                             }
                                                             className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
                                                             title="Detail Pasien"
+                                                            aria-label="Detail Pasien"
                                                         >
                                                             <MoreVertical className="w-5 h-5" />
                                                         </button>
@@ -978,6 +984,7 @@ export default function PasienIndex({
                                                             }
                                                             className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors"
                                                             title="Hapus Pasien"
+                                                            aria-label="Hapus Pasien"
                                                         >
                                                             <Trash2 className="w-5 h-5" />
                                                         </button>

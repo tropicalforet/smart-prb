@@ -143,6 +143,9 @@ class ImportDataBulananTest extends TestCase
 
     public function test_import_bulanan_oktober_lalu_november_seperti_contoh_asep(): void
     {
+        // Data November baru di-import di bulan November (tanggal ambil tidak boleh di masa depan)
+        \Carbon\Carbon::setTestNow('2026-11-15');
+
         // Oktober: mulai 01/09, ambil 01/10 → mulai sebelum bulan ambil → PRB Lama → jadwal 31/10
         $this->impor([$this->baris('PRB ASEP 001', '2026-09-01', '2026-10-01')])->assertOk();
 
@@ -163,6 +166,8 @@ class ImportDataBulananTest extends TestCase
         $this->assertSame('2026-10-31', $riwayat[1]->jadwal_target->toDateString());
         $this->assertSame(0, $riwayat[1]->selisih_hari);
         $this->assertSame('Patuh', $riwayat[1]->status_kepatuhan);
+
+        \Carbon\Carbon::setTestNow();
     }
 
     public function test_prb_baru_yang_sudah_ambil_dijadwalkan_dari_tanggal_ambil(): void

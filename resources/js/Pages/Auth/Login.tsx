@@ -5,7 +5,7 @@ import { useState } from 'react';
 export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
 
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
         remember: false,
@@ -13,7 +13,8 @@ export default function Login() {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/login');
+        // Password tidak dibiarkan tertinggal di kolom setelah login gagal
+        post('/login', { onError: () => reset('password') });
     };
 
     return (
@@ -29,7 +30,6 @@ export default function Login() {
                             <ShieldCheck className="w-8 h-8 text-teal-400" />
                         </div>
                         <h1 className="text-2xl font-bold text-white">Dashboard PRB</h1>
-                        <p className="text-slate-400 text-sm mt-1">Monitoring Kepatuhan Obat PRB</p>
                     </div>
 
                     {/* Card */}
@@ -118,10 +118,6 @@ export default function Login() {
 
                         </form>
                     </div>
-
-                    <p className="text-center text-xs text-slate-500 mt-6">
-                        Hanya admin yang berwenang dapat mengakses sistem ini.
-                    </p>
                 </div>
             </div>
         </>

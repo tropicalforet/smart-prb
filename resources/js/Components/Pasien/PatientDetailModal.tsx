@@ -1,13 +1,36 @@
 import { useState, useEffect } from 'react';
-import { PasienPRB, TINDAKAN_OPTIONS } from '@/types';
+import { PasienPRB, TINDAKAN_OPTIONS, DIAGNOSIS_OPTIONS, ALASAN_PASIF_OPTIONS } from '@/types';
 import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import {
     User, IdCard, FileText, Activity, Calendar,
-    History, MessageSquarePlus, Stethoscope, Save
+    History, MessageSquarePlus, Stethoscope, Save, Pencil
 } from 'lucide-react';
+
+/** diagnosis_prb bisa tersimpan sebagai array atau string JSON. */
+function daftarDiagnosis(diag: unknown): string[] {
+    if (Array.isArray(diag)) return diag.map(String);
+    if (typeof diag === 'string') {
+        try {
+            const parsed = JSON.parse(diag);
+            if (Array.isArray(parsed)) return parsed.map(String);
+        } catch {}
+        return diag ? [diag] : [];
+    }
+    return [];
+}
+
+const inputClass = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500';
+
+interface FormUbahData {
+    fktp_asal: string;
+    diagnosis_prb: string[];
+    tanggal_mulai_prb: string;
+    status: 'Aktif' | 'Pasif';
+    alasan_pasif: string;
+}
 
 // Format tanggal: DD/MM/YYYY
 const BULAN_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -40,6 +63,11 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
     const [catatan, setCatatan] = useState('');
     const [tanggalRealisasi, setTanggalRealisasi] = useState(new Date().toISOString().split('T')[0]);
     const [submitting, setSubmitting] = useState(false);
+
+    // State ubah data pasien (FKTP, diagnosis, mulai PRB, status)
+    const [formUbah, setFormUbah] = useState<FormUbahData | null>(null);
+    const [errorsUbah, setErrorsUbah] = useState<Record<string, string>>({});
+    const [savingUbah, setSavingUbah] = useState(false);
 
     // State edit histori per riwayat
     const [editingRiwayatId, setEditingRiwayatId] = useState<string | null>(null);
@@ -86,6 +114,53 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         });
     };
 
+    const mulaiUbahData = () => {
+        if (!pasien) return;
+        setErrorsUbah({});
+        setFormUbah({
+            fktp_asal: pasien.fktp_asal ?? '',
+            diagnosis_prb: daftarDiagnosis(pasien.diagnosis_prb),
+            tanggal_mulai_prb: (pasien.tanggal_mulai_prb ?? '').slice(0, 10),
+            status: pasien.status === 'Pasif' ? 'Pasif' : 'Aktif',
+            alasan_pasif: pasien.alasan_pasif ?? '',
+        });
+    };
+
+    const toggleDiagnosis = (diag: string) => {
+        setFormUbah(f => f && ({
+            ...f,
+            diagnosis_prb: f.diagnosis_prb.includes(diag)
+                ? f.diagnosis_prb.filter(d => d !== diag)
+                : [...f.diagnosis_prb, diag],
+        }));
+    };
+
+    const handleSimpanUbahData = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!pasien || !formUbah) return;
+        setSavingUbah(true);
+        setErrorsUbah({});
+        router.put(`/pasien/${pasien.id}`, {
+            noka: pasien.noka, // NOKA = identitas pasien, tidak diubah dari sini
+            fktp_asal: formUbah.fktp_asal.replace(/\s+/g, ' ').trim(),
+            diagnosis_prb: formUbah.diagnosis_prb,
+            tanggal_mulai_prb: formUbah.tanggal_mulai_prb,
+            status: formUbah.status,
+            alasan_pasif: formUbah.status === 'Pasif' ? formUbah.alasan_pasif : null,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setSavingUbah(false);
+                setFormUbah(null);
+                refreshPasien();
+            },
+            onError: (errs) => {
+                setSavingUbah(false);
+                setErrorsUbah(errs as Record<string, string>);
+            },
+        });
+    };
+
     useEffect(() => {
         if (isOpen && pasienId) {
             setLoading(true);
@@ -106,6 +181,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         } else {
             setPasien(null);
             setActiveTab('profil');
+            setFormUbah(null);
         }
     }, [isOpen, pasienId, tanggalEvaluasi, filterPeriode]);
 
@@ -249,10 +325,128 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                 </div>
 
                                 <div>
-                                    <h5 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-teal-600" />
-                                        Informasi Program
-                                    </h5>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h5 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                                            <FileText className="w-4 h-4 text-teal-600" />
+                                            Informasi Program
+                                        </h5>
+                                        {!formUbah && (
+                                            <button
+                                                type="button"
+                                                onClick={mulaiUbahData}
+                                                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                                Ubah Data
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {formUbah ? (
+                                        <form onSubmit={handleSimpanUbahData} className="space-y-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                            {Object.keys(errorsUbah).length > 0 && (
+                                                <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-sm text-rose-700 space-y-1">
+                                                    {Object.entries(errorsUbah).map(([field, msg]) => (
+                                                        <div key={field}>⚠ {msg}</div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div>
+                                                <label htmlFor="ubah_fktp" className="block text-xs font-medium text-slate-700 mb-1">FKTP Asal (Perujuk) *</label>
+                                                <input
+                                                    id="ubah_fktp"
+                                                    type="text"
+                                                    value={formUbah.fktp_asal}
+                                                    onChange={e => setFormUbah({ ...formUbah, fktp_asal: e.target.value.slice(0, 255) })}
+                                                    required
+                                                    className={inputClass}
+                                                />
+                                            </div>
+
+                                            <fieldset>
+                                                <legend className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB *</legend>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {/* Pilihan baku + diagnosis yang sudah tersimpan (mis. dari import) agar tidak hilang */}
+                                                    {[...new Set([...DIAGNOSIS_OPTIONS, ...daftarDiagnosis(pasien.diagnosis_prb)])].map(opt => (
+                                                        <label key={opt} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={formUbah.diagnosis_prb.includes(opt)}
+                                                                onChange={() => toggleDiagnosis(opt)}
+                                                                className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                            />
+                                                            {opt}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                {formUbah.diagnosis_prb.length === 0 && (
+                                                    <p className="text-xs text-rose-500 mt-1">Pilih minimal satu diagnosis.</p>
+                                                )}
+                                            </fieldset>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label htmlFor="ubah_mulai" className="block text-xs font-medium text-slate-700 mb-1">Tgl Mulai PRB *</label>
+                                                    <input
+                                                        id="ubah_mulai"
+                                                        type="date"
+                                                        value={formUbah.tanggal_mulai_prb}
+                                                        onChange={e => setFormUbah({ ...formUbah, tanggal_mulai_prb: e.target.value })}
+                                                        required
+                                                        className={inputClass}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label htmlFor="ubah_status" className="block text-xs font-medium text-slate-700 mb-1">Status Kepesertaan *</label>
+                                                    <select
+                                                        id="ubah_status"
+                                                        value={formUbah.status}
+                                                        onChange={e => setFormUbah({ ...formUbah, status: e.target.value as 'Aktif' | 'Pasif' })}
+                                                        className={inputClass}
+                                                    >
+                                                        <option value="Aktif">Aktif</option>
+                                                        <option value="Pasif">Pasif</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {formUbah.status === 'Pasif' && (
+                                                <div>
+                                                    <label htmlFor="ubah_alasan" className="block text-xs font-medium text-slate-700 mb-1">Alasan Pasif *</label>
+                                                    <select
+                                                        id="ubah_alasan"
+                                                        value={formUbah.alasan_pasif}
+                                                        onChange={e => setFormUbah({ ...formUbah, alasan_pasif: e.target.value })}
+                                                        required
+                                                        className={inputClass}
+                                                    >
+                                                        <option value="">Pilih alasan...</option>
+                                                        {[...new Set([...ALASAN_PASIF_OPTIONS, ...(pasien.alasan_pasif ? [pasien.alasan_pasif] : [])])].map(opt => (
+                                                            <option key={opt} value={opt}>{opt}</option>
+                                                        ))}
+                                                    </select>
+                                                    <p className="text-xs text-slate-500 mt-1">Pasien Pasif keluar dari pemantauan: kepatuhannya tidak lagi dinilai di Dashboard maupun Rekap.</p>
+                                                </div>
+                                            )}
+
+                                            <p className="text-xs text-slate-500">
+                                                Jenis PRB, jatah obat, dan jadwal berikutnya dihitung ulang otomatis dari Tgl Mulai PRB dan pengambilan terakhir.
+                                            </p>
+
+                                            <div className="flex justify-end gap-2">
+                                                <Button type="button" variant="ghost" onClick={() => setFormUbah(null)}>Batal</Button>
+                                                <Button
+                                                    type="submit"
+                                                    isLoading={savingUbah}
+                                                    disabled={formUbah.diagnosis_prb.length === 0}
+                                                    icon={<Save className="w-4 h-4" />}
+                                                >
+                                                    Simpan Perubahan
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    ) : (
                                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
                                         <div>
                                             <dt className="text-xs font-medium text-slate-500">Mulai PRB</dt>
@@ -277,6 +471,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                             </div>
                                         )}
                                     </dl>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -331,7 +526,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                                     type="date"
                                                                     value={editingRiwayatTanggal}
                                                                     onChange={e => setEditingRiwayatTanggal(e.target.value)}
-                                                                    className="rounded border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
+                                                                    className="rounded border border-slate-300 text-xs py-1 px-2 focus:ring-teal-500 focus:border-teal-500 w-[130px]"
                                                                 />
                                                                 <button
                                                                     disabled={savingRiwayat}
@@ -413,7 +608,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                 value={tindakan}
                                                 onChange={(e) => setTindakan(e.target.value)}
                                                 required
-                                                className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
                                             >
                                                 <option value="">Pilih tindakan...</option>
                                                 {TINDAKAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -428,7 +623,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                     value={tanggalRealisasi}
                                                     onChange={(e) => setTanggalRealisasi(e.target.value)}
                                                     required
-                                                    className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500"
+                                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
                                                 />
                                             </div>
                                         )}
@@ -439,7 +634,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                             value={catatan}
                                             onChange={(e) => setCatatan(e.target.value)}
                                             rows={2}
-                                            className="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500"
+                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
                                             placeholder="Tuliskan catatan percakapan atau keterangan tambahan..."
                                         />
                                     </div>

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\PasienPrb;
+use App\Models\RiwayatPengambilanObat;
 use App\Services\KepatuhanService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
@@ -29,7 +31,22 @@ class DashboardController extends Controller
         // ── Data tren kepatuhan per bulan (12 bulan terakhir) ────────────
         // Dinilai per siklus pasien dengan logika yang sama dengan KPI
         // periode, sehingga tren bulan X = KPI saat filter periode X.
-        $trenKepatuhan = $this->kepatuhanService->hitungTrenKepatuhan($tanggalEvaluasi, $filterFktp);
+        //
+        // Perhitungannya berat (semua pasien × 12 bulan), jadi di-cache.
+        // Kunci memuat "versi data" (waktu ubah terakhir + jumlah baris
+        // pasien & riwayat): setiap tambah/ubah/hapus otomatis membuat
+        // kunci baru, sehingga tren tidak pernah basi.
+        $versiData = implode('|', [
+            PasienPrb::max('updated_at'),
+            PasienPrb::count(),
+            RiwayatPengambilanObat::max('updated_at'),
+            RiwayatPengambilanObat::count(),
+        ]);
+        $trenKepatuhan = Cache::remember(
+            'dashboard:tren:' . md5($tanggalEvaluasi . '|' . $filterFktp . '|' . $versiData),
+            now()->addDay(),
+            fn () => $this->kepatuhanService->hitungTrenKepatuhan($tanggalEvaluasi, $filterFktp)
+        );
 
         // ── Options filter ────────────────────────────────────────────────
         $fktpOptions = PasienPrb::select('fktp_asal')

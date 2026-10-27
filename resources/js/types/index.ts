@@ -135,6 +135,8 @@ export interface Filters {
     filter_periode?: string;
     filter_jenis_prb?: string;
     filter_early_warning?: string;
+    sort_by?: string;
+    sort_order?: 'asc' | 'desc';
 }
 
 // Constants

@@ -42,8 +42,8 @@ class PasienPrbController extends Controller
         $filterEarlyWarning = $request->input('filter_early_warning', '');
         
         // Sorting parameters
-        $sortBy = $request->input('sort_by', 'urgensi'); // default: urgensi
-        $sortOrder = $request->input('sort_order', 'desc'); // asc or desc
+        $sortBy = $request->input('sort_by', 'kode_pasien'); // default: kode pasien
+        $sortOrder = $request->input('sort_order', 'asc') === 'desc' ? 'desc' : 'asc';
 
         // ---------------------------------------------------------------
         // KUMPULKAN PERIODE DINAMIS dari 2 sumber:
@@ -283,55 +283,35 @@ class PasienPrbController extends Controller
         }
 
         /*
-         * Sort data pasien berdasarkan pilihan user.
-         * 
-         * Opsi sorting:
-         * - urgensi: default, berdasarkan selisih hari (overdue paling atas)
-         * - kode_pasien: berdasarkan kode pasien alfanumerik
-         * - nama_pasien: berdasarkan nama pasien
-         * - tanggal_mulai_prb: tanggal mulai program PRB
-         * - tanggal_pengambilan_terakhir: terakhir ambil obat
-         * - tanggal_jadwal_berikutnya: jadwal pengambilan berikutnya
+         * Sort data pasien — opsi mengikuti kolom tabel, urut kiri → kanan:
+         * kode_pasien (default), noka, jenis_prb, fktp_asal,
+         * tanggal_mulai_prb, tanggal_pengambilan_terakhir,
+         * tanggal_jadwal_berikutnya.
+         *
+         * Perbandingan natural (PRB-999 sebelum PRB-1000) dan nilai kosong
+         * selalu di bawah, baik urutan naik maupun turun.
          */
-        if ($sortBy === 'urgensi') {
-            // Sorting default: urgensi jadwal pengambilan
-            $pasienAll = $pasienAll->sort(function ($a, $b) use ($sortOrder) {
-                // Pasif selalu di bawah
-                $aPasif = ($a['status'] ?? '') === 'Pasif';
-                $bPasif = ($b['status'] ?? '') === 'Pasif';
-                if ($aPasif !== $bPasif) {
-                    return $aPasif ? 1 : -1;
-                }
+        $nilaiSort = fn (array $p) => match ($sortBy) {
+            'noka'                         => $p['noka'] ?? null,
+            'jenis_prb'                    => $p['jenis_prb'] ?? null,
+            'fktp_asal'                    => $p['fktp_asal'] ?? null,
+            'tanggal_mulai_prb'            => isset($p['tanggal_mulai_prb']) ? substr($p['tanggal_mulai_prb'], 0, 10) : null,
+            'tanggal_pengambilan_terakhir' => $p['tanggal_pengambilan_terakhir'] ?? null,
+            'tanggal_jadwal_berikutnya'    => substr((string) ($p['jadwal_target_aktif'] ?? $p['tanggal_jadwal_berikutnya'] ?? ''), 0, 10) ?: null,
+            default                        => $p['kode_pasien'] ?? null,
+        };
 
-                // Tidak punya jadwal → di bawah yang punya jadwal
-                $aHasJadwal = !empty($a['jadwal_target_aktif']) || !empty($a['tanggal_jadwal_berikutnya']);
-                $bHasJadwal = !empty($b['jadwal_target_aktif']) || !empty($b['tanggal_jadwal_berikutnya']);
-                if ($aHasJadwal !== $bHasJadwal) {
-                    return $aHasJadwal ? -1 : 1;
-                }
+        $pasienAll = $pasienAll->sort(function ($a, $b) use ($nilaiSort, $sortOrder) {
+            $va = $nilaiSort($a);
+            $vb = $nilaiSort($b);
 
-                // Selisih hari: yang paling besar (paling terlambat / overdue) di atas
-                $aSelisih = $a['selisih_hari_evaluasi'] ?? -999;
-                $bSelisih = $b['selisih_hari_evaluasi'] ?? -999;
-                
-                $result = $bSelisih <=> $aSelisih;
-                return $sortOrder === 'asc' ? -$result : $result;
-            })->values();
-        } else {
-            // Sorting berdasarkan kolom spesifik
-            $pasienAll = $pasienAll->sortBy(function ($pasien) use ($sortBy) {
-                $value = match($sortBy) {
-                    'kode_pasien' => $pasien['kode_pasien'] ?? '',
-                    'nama_pasien' => strtolower($pasien['nama_pasien'] ?? ''),
-                    'tanggal_mulai_prb' => $pasien['tanggal_mulai_prb'] ?? '9999-12-31',
-                    'tanggal_pengambilan_terakhir' => $pasien['tanggal_pengambilan_terakhir'] ?? '9999-12-31',
-                    'tanggal_jadwal_berikutnya' => $pasien['jadwal_target_aktif'] ?? $pasien['tanggal_jadwal_berikutnya'] ?? '9999-12-31',
-                    default => $pasien['kode_pasien'] ?? '',
-                };
-                
-                return $value;
-            }, SORT_REGULAR, $sortOrder === 'desc')->values();
-        }
+            if ($va === null || $va === '' || $vb === null || $vb === '') {
+                return ($va === null || $va === '') <=> ($vb === null || $vb === '');
+            }
+
+            $hasil = strnatcasecmp((string) $va, (string) $vb);
+            return $sortOrder === 'desc' ? -$hasil : $hasil;
+        })->values();
 
         return Inertia::render(
             'Pasien/Index',
@@ -444,7 +424,7 @@ class PasienPrbController extends Controller
                 'required|date',
 
             'tanggal_pengambilan_terakhir' =>
-                'nullable|date',
+                'nullable|date|before_or_equal:today',
 
             'status' =>
                 'required|in:Aktif,Pasif',
@@ -504,7 +484,7 @@ class PasienPrbController extends Controller
             );
 
             return redirect()
-                ->route('pasien.index')
+                ->back()
                 ->with(
                     'success',
                     'Data pasien ' . $existing->identitas() . ' berhasil diperbarui dan jadwal disinkronkan tanpa menduplikasi data.'
@@ -561,7 +541,7 @@ class PasienPrbController extends Controller
         );
 
         return redirect()
-            ->route('pasien.index')
+            ->back()
             ->with('success', 'Pasien berhasil ditambahkan.');
     }
 
@@ -704,7 +684,7 @@ class PasienPrbController extends Controller
                 'required|date',
 
             'tanggal_pengambilan_terakhir' =>
-                'nullable|date',
+                'nullable|date|before_or_equal:today',
 
             'status' =>
                 'required|in:Aktif,Pasif',
@@ -788,7 +768,7 @@ class PasienPrbController extends Controller
         $pasien->delete();
 
         return redirect()
-            ->route('pasien.index')
+            ->back()
             ->with('success', 'Pasien berhasil dihapus.');
     }
 
@@ -805,15 +785,14 @@ class PasienPrbController extends Controller
      */
     public function destroyBulk(Request $request)
     {
+        // Hanya pasien yang dipilih (daftar id). Tidak ada opsi "hapus semua"
+        // agar seluruh data tidak bisa terhapus lewat satu permintaan.
         $validated = $request->validate([
-            'ids' => 'nullable|array',
+            'ids'   => 'required|array|min:1',
             'ids.*' => 'uuid',
-            'all' => 'nullable|boolean',
         ]);
 
-        $query = !empty($validated['all'])
-            ? PasienPrb::query()
-            : PasienPrb::whereIn('id', $validated['ids'] ?? []);
+        $query = PasienPrb::whereIn('id', $validated['ids']);
 
         // Identitas dicatat sebelum dihapus (rincian audit log)
         $terhapus = (clone $query)->orderBy('kode_pasien')->get()->map->identitas()->all();
@@ -823,7 +802,7 @@ class PasienPrbController extends Controller
         $this->auditLogService->hapusMassal($count, $terhapus);
 
         return redirect()
-            ->route('pasien.index')
+            ->back()
             ->with('success', "$count pasien berhasil dihapus.");
     }
 
@@ -858,7 +837,7 @@ class PasienPrbController extends Controller
     ) {
         $validated = $request->validate([
             'riwayat_id'        => 'required|uuid',
-            'tanggal_realisasi' => 'required|date',
+            'tanggal_realisasi' => 'required|date|before_or_equal:today',
         ]);
 
         $sebelum     = AuditLogService::snapshotPasien($pasien);
@@ -913,7 +892,7 @@ class PasienPrbController extends Controller
         PasienPrb $pasien
     ) {
         $validated = $request->validate([
-            'tanggal_realisasi' => 'required|date',
+            'tanggal_realisasi' => 'required|date|before_or_equal:today',
         ]);
 
         $sebelum = AuditLogService::snapshotPasien($pasien);
@@ -997,7 +976,7 @@ class PasienPrbController extends Controller
         PasienPrb $pasien
     ) {
         $validated = $request->validate([
-            'tanggal_pengambilan_terakhir' => 'required|date',
+            'tanggal_pengambilan_terakhir' => 'required|date|before_or_equal:today',
         ]);
 
         $tglTerakhir = $validated['tanggal_pengambilan_terakhir'];
@@ -1245,6 +1224,11 @@ class PasienPrbController extends Controller
             }
             if (empty($diagnosisPrb)) {
                 $invalidReasons[] = 'Diagnosis PRB wajib diisi';
+            }
+            // Pengambilan obat tidak mungkin terjadi di masa depan
+            // (biasanya salah tahun pada kolom bulan).
+            if ($tglAmbilDb && $tglAmbilDb > Carbon::today()->toDateString()) {
+                $invalidReasons[] = 'Tanggal pengambilan melewati hari ini';
             }
 
             if (!empty($invalidReasons)) {

@@ -225,7 +225,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[
                                 { label: 'Pasien baru',           value: hasil.baru,       color: 'bg-emerald-50 text-emerald-700' },
-                                { label: 'Transaksi ditambahkan', value: hasil.diperbarui, color: 'bg-teal-50 text-teal-700' },
+                                { label: 'Pasien lama diperbarui', value: hasil.diperbarui, color: 'bg-teal-50 text-teal-700' },
                                 { label: 'Duplikat dilewati',     value: hasil.duplikat,   color: 'bg-slate-100 text-slate-700' },
                                 { label: 'Gagal',                 value: hasil.invalid,    color: 'bg-rose-50 text-rose-700' },
                             ].map(c => (

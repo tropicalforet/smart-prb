@@ -649,6 +649,14 @@ export function validateImportData(
             errors.push('Tanggal Pengambilan tidak boleh lebih awal dari Tanggal Mulai PRB.');
         }
 
+        // ...dan tidak boleh melewati hari ini (biasanya salah tahun di kolom bulan)
+        const hariIni = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, zona waktu lokal
+        const masaDepan = pengambilan.filter(t => t > hariIni);
+        if (masaDepan.length > 0) {
+            const tampil = masaDepan.map(t => t.split('-').reverse().join('/')); // YYYY-MM-DD → DD/MM/YYYY
+            errors.push(`Tanggal Pengambilan melewati hari ini: ${tampil.join(', ')}. Periksa tahun data.`);
+        }
+
         results.push({
             row: idx + 1,
             sheet: String(row['_sheet_name'] ?? 'Sheet1'),
