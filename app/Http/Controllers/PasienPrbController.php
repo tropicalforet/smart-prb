@@ -472,9 +472,10 @@ class PasienPrbController extends Controller
 
                 if (!empty($hasil['duplikat'])) {
                     // Jika tanggal sudah pernah tercatat, pastikan data master tetap sinkron.
-                    // Load riwayat untuk tentukan jenis PRB (Baru jika belum ada riwayat, Lama jika sudah ada)
-                    $existing->load('riwayatPengambilanObat');
-                    $jenisPrb  = KepatuhanService::tentukanJenisPrb($existing);
+                    $jenisPrb  = KepatuhanService::tentukanJenisPrb(
+                        $existing->tanggal_mulai_prb?->toDateString(),
+                        $newTglAmbil
+                    );
                     $jatahObat = $jenisPrb === 'Baru'
                         ? KepatuhanService::JATAH_PRB_BARU
                         : KepatuhanService::JATAH_PRB_LAMA;
@@ -518,9 +519,9 @@ class PasienPrbController extends Controller
 
         /*
          * Tentukan PRB Baru/Lama dan jadwal berikutnya.
-         * Pasien baru (belum ada riwayat) → PRB Baru
+         * Mulai PRB bulan ini → PRB Baru, sebelumnya → PRB Lama
          */
-        $this->setJenisDanJadwal($validated, null);
+        $this->setJenisDanJadwal($validated);
 
         /*
          * Belum ada realisasi
@@ -1008,7 +1009,7 @@ class PasienPrbController extends Controller
 
         if (!empty($hasil['duplikat'])) {
             // Jika tanggal sudah pernah tercatat di riwayat, pastikan master tetap sinkron.
-            // Jenis PRB ditentukan dari tanggal_mulai_prb vs bulan tanggal realisasi.
+            // Jenis PRB dari bulan mulai PRB vs bulan tanggal realisasi.
             $jenisPrb  = KepatuhanService::tentukanJenisPrb(
                 $pasien->tanggal_mulai_prb?->toDateString(),
                 $tglTerakhir
@@ -1411,11 +1412,10 @@ class PasienPrbController extends Controller
                             ->first();
 
                         if ($terbaru && $terbaru->id === $riwayatUntukUpdate->id) {
-                            // Jenis PRB ditentukan dari tanggal_mulai_prb vs bulan saat ini.
-                            // Gunakan tanggal_mulai_prb dari master pasien jika ada,
-                            // fallback ke nilai dari baris Excel ($tglMulaiDb).
+                            // Jenis PRB dari bulan mulai PRB vs bulan pengambilan.
+                            // Mulai PRB dari master; fallback ke baris Excel.
                             $tglMulaiAcuan = $pasien->tanggal_mulai_prb?->toDateString() ?? $tglMulaiDb;
-                            $jenisPrb      = KepatuhanService::tentukanJenisPrb($tglMulaiAcuan);
+                            $jenisPrb      = KepatuhanService::tentukanJenisPrb($tglMulaiAcuan, $tglAmbilDb);
                             $jatahObat     = $jenisPrb === 'Baru'
                                 ? KepatuhanService::JATAH_PRB_BARU
                                 : KepatuhanService::JATAH_PRB_LAMA;
@@ -1827,16 +1827,16 @@ class PasienPrbController extends Controller
      * =========================================================
      *
      * ATURAN GLOBAL (tidak boleh dilanggar di mana pun):
+     * Jenis dari KepatuhanService::tentukanJenisPrb() — bulan mulai PRB
+     * dibandingkan bulan pengambilan terakhir (atau bulan ini jika belum ambil).
      *
-     * 1. PRB BARU — Belum pernah mengambil obat.
-     *    Kondisi  : tanggal_pengambilan_terakhir kosong/null
+     * 1. PRB BARU — mulai PRB di bulan acuan.
      *    Jatah    : 23 hari
-     *    Jadwal   : tanggal_mulai_prb + 23 hari
+     *    Jadwal   : (tanggal_pengambilan_terakhir ?: tanggal_mulai_prb) + 23 hari
      *
-     * 2. PRB LAMA — Sudah pernah mengambil obat.
-     *    Kondisi  : tanggal_pengambilan_terakhir terisi
+     * 2. PRB LAMA — mulai PRB sebelum bulan acuan (atau tanpa tanggal mulai).
      *    Jatah    : 30 hari
-     *    Jadwal   : tanggal_pengambilan_terakhir + 30 hari
+     *    Jadwal   : (tanggal_pengambilan_terakhir ?: tanggal_mulai_prb) + 30 hari
      *
      * SAFEGUARD:
      * - Jika ternyata jatah_obat tidak sesuai jenis, koreksi otomatis.
@@ -1848,22 +1848,19 @@ class PasienPrbController extends Controller
      * memanggil fungsi ini agar jenis, jatah, dan jadwal selalu sinkron.
      */
     private function setJenisDanJadwal(
-        array &$data,
-        ?PasienPrb $pasienExisting = null
+        array &$data
     ): void {
         $tanggalTerakhir = $data['tanggal_pengambilan_terakhir'] ?? null;
 
         // =====================================================
         // TENTUKAN JENIS PRB
-        //
-        // **ATURAN BARU:**
-        //   PRB BARU = Belum pernah ambil obat (tidak ada riwayat)
-        //   PRB LAMA = Sudah pernah ambil obat (ada riwayat)
-        //
-        // Jika ini pasien existing (update/import duplikat), cek riwayatnya.
-        // Jika pasien baru (create), belum ada riwayat → PRB Baru.
+        //   Bulan mulai PRB vs bulan pengambilan terakhir
+        //   (bulan ini jika belum pernah ambil).
         // =====================================================
-        $jenisPrb = KepatuhanService::tentukanJenisPrb($pasienExisting);
+        $jenisPrb = KepatuhanService::tentukanJenisPrb(
+            $data['tanggal_mulai_prb'] ?? null,
+            $tanggalTerakhir
+        );
 
         $data['jenis_prb'] = $jenisPrb;
 

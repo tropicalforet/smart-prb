@@ -141,6 +141,30 @@ class ImportDataBulananTest extends TestCase
         $this->assertSame(0, $riwayat->selisih_hari);
     }
 
+    public function test_import_bulanan_oktober_lalu_november_seperti_contoh_asep(): void
+    {
+        // Oktober: mulai 01/09, ambil 01/10 → mulai sebelum bulan ambil → PRB Lama → jadwal 31/10
+        $this->impor([$this->baris('PRB ASEP 001', '2026-09-01', '2026-10-01')])->assertOk();
+
+        $pasien = PasienPrb::where('noka', 'PRB ASEP 001')->firstOrFail();
+        $this->assertSame('Lama', $pasien->jenis_prb);
+        $this->assertSame('2026-10-01', $pasien->tanggal_pengambilan_terakhir->toDateString());
+        $this->assertSame('2026-10-31', $pasien->tanggal_jadwal_berikutnya->toDateString());
+
+        // November: ambil 31/10 = tepat jadwal → Patuh, jadwal berikutnya 31/10 + 30 = 30/11
+        $this->impor([$this->baris('PRB ASEP 001', '2026-09-01', '2026-10-31')])->assertOk();
+
+        $pasien->refresh();
+        $this->assertSame('2026-10-31', $pasien->tanggal_pengambilan_terakhir->toDateString());
+        $this->assertSame('2026-11-30', $pasien->tanggal_jadwal_berikutnya->toDateString());
+
+        $riwayat = $pasien->riwayatPengambilanObat()->orderBy('tanggal_pengambilan')->get();
+        $this->assertCount(2, $riwayat);
+        $this->assertSame('2026-10-31', $riwayat[1]->jadwal_target->toDateString());
+        $this->assertSame(0, $riwayat[1]->selisih_hari);
+        $this->assertSame('Patuh', $riwayat[1]->status_kepatuhan);
+    }
+
     public function test_prb_baru_yang_sudah_ambil_dijadwalkan_dari_tanggal_ambil(): void
     {
         // Mulai & ambil di bulan yang sama (Maret) → PRB Baru, jatah 23 dari tanggal ambil

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\PasienPrb;
+use App\Models\RiwayatPengambilanObat;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,7 +27,7 @@ class DashboardTest extends TestCase
         ]);
     }
 
-    public function test_tabel_dashboard_hanya_berisi_maks_10_pasien_tidak_patuh_tanpa_riwayat(): void
+    public function test_dashboard_tidak_mengirim_daftar_pasien_tidak_patuh(): void
     {
         Carbon::setTestNow('2026-10-24');
 
@@ -43,12 +44,52 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Dashboard')
-                ->has('pasienAktif', 10)
-                ->where('pasienAktif.0.status_kepatuhan', 'Tidak Patuh')
-                // jadwal paling lama terlewat (paling mendesak) di urutan pertama
-                ->where('pasienAktif.0.kode_pasien', 'PRB-012')
-                ->missing('pasienAktif.0.riwayat_pengambilan_obat')
+                // tabel "Pasien Tidak Patuh" sudah dihapus dari dashboard
+                ->missing('pasienAktif')
                 ->where('statistik.total_aktif', 15)
+            );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_tren_bulan_sama_dengan_kpi_saat_filter_periode_bulan_itu(): void
+    {
+        Carbon::setTestNow('2026-10-24');
+
+        // Pasien 1: siklus September patuh, tercatat DUA baris riwayat
+        // (mis. dobel import) → tetap dihitung satu siklus.
+        $p1 = $this->pasien(1, '2026-10-10');
+        foreach (['F-1', 'F-2'] as $faktur) {
+            RiwayatPengambilanObat::create([
+                'pasien_prb_id'       => $p1->id,
+                'no_faktur'           => $faktur,
+                'tanggal_pengambilan' => '2026-09-10',
+                'jadwal_target'       => '2026-09-10',
+                'selisih_hari'        => 0,
+                'status_kepatuhan'    => 'Patuh',
+            ]);
+        }
+
+        // Pasien 2: jadwal September terlewat tanpa riwayat → Tidak Patuh
+        $this->pasien(2, '2026-09-05');
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('trenKepatuhan', 12)
+                ->where('trenKepatuhan.10.periode', '2026-09')
+                ->where('trenKepatuhan.10.patuh', 1)
+                ->where('trenKepatuhan.10.tidak_patuh', 1)
+                ->where('trenKepatuhan.10.persentase', 50)
+                // bulan tanpa pasien yang dinilai → null, bukan 0%
+                ->where('trenKepatuhan.0.persentase', null)
+            );
+
+        $this->actingAs($user)->get('/?filter_periode=2026-09')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('statistik.patuh', 1)
+                ->where('statistik.tidak_patuh', 1)
             );
 
         Carbon::setTestNow();

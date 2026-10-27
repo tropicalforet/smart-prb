@@ -1,12 +1,11 @@
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
-import { DashboardStats, PasienPRB } from '@/types';
+import { DashboardStats } from '@/types';
 import { motion } from 'motion/react';
 import {
     Users,
     CheckCircle2,
     AlertTriangle,
-    Clock,
     TrendingUp,
     Filter,
     X,
@@ -26,13 +25,15 @@ import {
     Legend,
     Line,
     ComposedChart,
+    ReferenceLine,
 } from 'recharts';
 
 interface TrenItem {
+    periode: string; // YYYY-MM
     bulan: string;
     patuh: number;
     tidak_patuh: number;
-    persentase: number;
+    persentase: number | null; // null = belum ada pasien yang dinilai
 }
 
 interface PeriodeOption {
@@ -42,7 +43,6 @@ interface PeriodeOption {
 
 interface Props {
     statistik: DashboardStats;
-    pasienAktif: PasienPRB[];
     tanggalEvaluasi: string;
     trenKepatuhan: TrenItem[];
     fktpOptions: string[];
@@ -74,7 +74,6 @@ function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: 
 
 export default function Dashboard({
     statistik,
-    pasienAktif,
     trenKepatuhan,
     fktpOptions,
     periodeOptions,
@@ -144,22 +143,12 @@ export default function Dashboard({
             shadowColor: 'shadow-rose-500/25',
             filterKepatuhan: 'Tidak Patuh',
         },
-        {
-            title: 'Dalam Toleransi',
-            value: statistik.dalam_toleransi,
-            subtitle: 'Rentang H-3 s.d. H+3',
-            icon: Clock,
-            gradient: 'from-amber-500 to-amber-600',
-            shadowColor: 'shadow-amber-500/25',
-            filterKepatuhan: 'Dalam Toleransi',
-        },
     ];
 
     // Donut chart data
     const donutData = [
         { name: 'Patuh',       value: statistik.patuh,          color: '#10b981' },
         { name: 'Tidak Patuh', value: statistik.tidak_patuh,    color: '#f43f5e' },
-        { name: 'Toleransi',   value: statistik.dalam_toleransi, color: '#f59e0b' },
     ].filter(d => d.value > 0);
 
     return (
@@ -234,7 +223,7 @@ export default function Dashboard({
             )}
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 {kpiCards.map((card, idx) => (
                     <motion.div
                         key={card.title}
@@ -327,8 +316,8 @@ export default function Dashboard({
                                 <Tooltip
                                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }}
                                 />
-                                <Bar dataKey="patuh" name="Patuh" fill="#14b8a6" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="tidak_patuh" name="Tidak Patuh" fill="#f97316" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="patuh" name="Patuh" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="tidak_patuh" name="Tidak Patuh" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -347,7 +336,7 @@ export default function Dashboard({
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h3 className="text-sm font-semibold text-slate-700">Tren Kepatuhan 12 Bulan Terakhir</h3>
-                        <p className="text-xs text-slate-400 mt-0.5">Persentase pasien patuh per bulan berdasarkan riwayat siklus</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Persentase pasien patuh per siklus bulanan (sama dengan KPI saat filter periode dipilih)</p>
                     </div>
                 </div>
                 {trenKepatuhan.some(t => t.patuh + t.tidak_patuh > 0) ? (
@@ -362,15 +351,33 @@ export default function Dashboard({
                                 textAnchor="end"
                                 height={50}
                             />
+                            {/* Sumbu kiri: persentase (garis) */}
                             <YAxis
+                                yAxisId="persen"
                                 tick={{ fontSize: 11, fill: '#64748b' }}
                                 domain={[0, 100]}
                                 tickFormatter={(v) => `${v}%`}
                             />
+                            {/* Sumbu kanan: jumlah pasien (batang) */}
+                            <YAxis
+                                yAxisId="jumlah"
+                                orientation="right"
+                                tick={{ fontSize: 11, fill: '#94a3b8' }}
+                                allowDecimals={false}
+                            />
+                            {/* Penanda bulan yang dipilih di filter periode */}
+                            {filterPeriode && trenKepatuhan.some(t => t.periode === filterPeriode) && (
+                                <ReferenceLine
+                                    yAxisId="persen"
+                                    x={trenKepatuhan.find(t => t.periode === filterPeriode)!.bulan}
+                                    stroke="#0d9488"
+                                    strokeDasharray="4 4"
+                                />
+                            )}
                             <Tooltip
                                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }}
-                                formatter={(value: number, name: string) => {
-                                    if (name === 'persentase') return [`${value}%`, 'Kepatuhan'];
+                                formatter={(value, name) => {
+                                    if (name === 'persentase') return [value === null ? '-' : `${value}%`, 'Kepatuhan'];
                                     if (name === 'patuh')      return [value, 'Patuh'];
                                     if (name === 'tidak_patuh') return [value, 'Tidak Patuh'];
                                     return [value, name];
@@ -385,10 +392,11 @@ export default function Dashboard({
                                 }}
                             />
                             {/* Batang patuh & tidak patuh sebagai konteks */}
-                            <Bar dataKey="patuh"       name="patuh"       fill="#10b981" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
-                            <Bar dataKey="tidak_patuh" name="tidak_patuh" fill="#f43f5e" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
+                            <Bar yAxisId="jumlah" dataKey="patuh"       name="patuh"       fill="#10b981" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
+                            <Bar yAxisId="jumlah" dataKey="tidak_patuh" name="tidak_patuh" fill="#f43f5e" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
                             {/* Garis persentase kepatuhan — axis utama */}
                             <Line
+                                yAxisId="persen"
                                 type="monotone"
                                 dataKey="persentase"
                                 name="persentase"
@@ -405,66 +413,6 @@ export default function Dashboard({
                     </div>
                 )}
             </motion.div>
-
-            {/* Overdue Patient Alert Table */}
-            {statistik.tidak_patuh > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: 0.6 }}
-                    className="bg-white rounded-2xl border border-rose-200 shadow-sm overflow-hidden"
-                >
-                    <div className="px-6 py-4 bg-gradient-to-r from-rose-50 to-rose-100 border-b border-rose-200">
-                        <h3 className="text-sm font-semibold text-rose-700 flex items-center gap-2">
-                            <AlertTriangle className="w-4 h-4" />
-                            Pasien Tidak Patuh — Butuh Tindak Lanjut Segera
-                        </h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-slate-100">
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pasien</th>
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Diagnosis</th>
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Jadwal</th>
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Keterlambatan</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pasienAktif
-                                    .filter(p => p.status_kepatuhan === 'Tidak Patuh')
-                                    .slice(0, 10)
-                                    .map((p) => (
-                                        <tr key={p.id} className="border-b border-slate-50 hover:bg-rose-50/50 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div className="font-medium text-slate-800">{p.kode_pasien}</div>
-                                                <div className="text-xs text-slate-400 font-mono">NOKA {p.noka}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-slate-600">
-                                                {Array.isArray(p.diagnosis_prb)
-                                                    ? p.diagnosis_prb.join(', ')
-                                                    : p.diagnosis_prb}
-                                            </td>
-                                            <td className="px-4 py-3 text-slate-600">
-                                                {p.tanggal_jadwal_berikutnya
-                                                    ? (() => {
-                                                        const d = new Date(p.tanggal_jadwal_berikutnya);
-                                                        return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-                                                    })()
-                                                    : '-'}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">
-                                                    {p.selisih_hari_evaluasi} hari
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </motion.div>
-            )}
         </AppLayout>
     );
 }

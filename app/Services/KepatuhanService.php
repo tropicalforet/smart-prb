@@ -56,42 +56,33 @@ class KepatuhanService
      * HELPER: TENTUKAN JENIS PRB (BARU / LAMA)
      * =========================================================
      *
-     * **ATURAN BISNIS YANG DIPERBARUI:**
-     *   PRB BARU  = Pasien belum pernah mengambil obat sama sekali.
-     *               Tidak ada riwayat pengambilan obat di database.
-     *   PRB LAMA  = Pasien sudah pernah mengambil obat minimal 1 kali.
-     *               Ada riwayat pengambilan obat di database.
+     * Ditentukan dari BULAN mulai PRB dibandingkan BULAN acuan:
+     *   PRB BARU  = mulai PRB di bulan acuan (mis. mulai Oktober,
+     *               ambil obat Oktober) → jadwal berikutnya +23 hari.
+     *   PRB LAMA  = mulai PRB sebelum bulan acuan → jadwal berikutnya +30 hari.
      *
-     * Logika ini TIDAK lagi berdasarkan bulan pendaftaran, tetapi
-     * berdasarkan ada/tidaknya transaksi pengambilan obat historis.
+     * Bulan acuan = bulan pengambilan obat (bukan hari ini), agar data
+     * Oktober yang baru di-import November tetap dinilai dengan benar.
+     * Tanpa pengambilan, acuan = hari ini.
      *
-     * Digunakan oleh:
-     *   - PasienPrbController::setJenisDanJadwal()  → store() & import()
-     *   - PasienPrbController::store()              → kasus pasien duplikat BPJS
-     *   - PasienPrbController::import()             → blok update faktur
-     *   - KepatuhanService::prosesRealisasi()       → realisasi manual dari UI
+     * Tanpa tanggal mulai PRB (data apotek lama) → dianggap Lama.
      *
-     * @param \App\Models\PasienPrb|null $pasien  Instance pasien dengan relasi riwayatPengambilanObat loaded
+     * Contoh: mulai 01/09/2026, ambil 01/10/2026 → Lama → jadwal 31/10/2026.
+     *
+     * @param string|null $tanggalMulaiPrb  'Y-m-d'
+     * @param string|null $tanggalAcuan     tanggal pengambilan obat; null = hari ini
      * @return string  'Baru' atau 'Lama'
      */
-    public static function tentukanJenisPrb(?PasienPrb $pasien): string
+    public static function tentukanJenisPrb(?string $tanggalMulaiPrb, ?string $tanggalAcuan = null): string
     {
-        // Jika pasien null atau belum disimpan (no ID), anggap Baru
-        if (!$pasien || !$pasien->id) {
-            return 'Baru';
+        if (empty($tanggalMulaiPrb)) {
+            return 'Lama';
         }
 
-        // Load relasi riwayat jika belum di-load
-        if (!$pasien->relationLoaded('riwayatPengambilanObat')) {
-            $pasien->load('riwayatPengambilanObat');
-        }
+        $bulanMulai = Carbon::parse($tanggalMulaiPrb)->format('Y-m');
+        $bulanAcuan = Carbon::parse($tanggalAcuan ?: Carbon::today())->format('Y-m');
 
-        // Cek apakah ada riwayat pengambilan obat
-        $adaRiwayat = $pasien->riwayatPengambilanObat && $pasien->riwayatPengambilanObat->count() > 0;
-
-        // Belum pernah ambil obat = PRB Baru
-        // Sudah pernah ambil obat = PRB Lama
-        return $adaRiwayat ? 'Lama' : 'Baru';
+        return $bulanMulai < $bulanAcuan ? 'Lama' : 'Baru';
     }
 
     /**
@@ -877,20 +868,9 @@ class KepatuhanService
         //
         // no_faktur internal sudah dihitung di awal fungsi (deterministik).
         // ------------------------------------------------------------------
-        // Tentukan jenis PRB dari tanggal_mulai_prb vs bulan realisasi.
-        // Setelah realisasi pertama, pasien yang mulai bulan ini (Baru)
-        // tetap Baru selama bulan yang sama. Bulan berikutnya otomatis Lama.
-        $jenisPrbBaru  = self::tentukanJenisPrb(
-            $pasien->tanggal_mulai_prb?->toDateString(),
-            $realisasi->toDateString()  // referensi = bulan realisasi, bukan hari ini
-        );
-        $jatahObatBaru = $jenisPrbBaru === 'Baru' ? self::JATAH_PRB_BARU : self::JATAH_PRB_LAMA;
-        $jadwalBaru    = $this->hitungJadwalBerikutnya($realisasi, $jatahObatBaru);
-
         DB::transaction(function () use (
             $pasien, $realisasi, $jadwalTarget,
-            $noFakturInternal, $selisihHari, $statusKepatuhan,
-            $jadwalBaru, $jenisPrbBaru, $jatahObatBaru
+            $noFakturInternal, $selisihHari, $statusKepatuhan
         ) {
             // 4a. Simpan riwayat — jadwal_target = siklus INI (sebelum dimajukan)
             // tanggal_berobat = null: realisasi manual tidak memiliki tanggal kunjungan
@@ -905,10 +885,18 @@ class KepatuhanService
                 'status_kepatuhan'    => $statusKepatuhan,
             ]);
 
+            // Jenis PRB dari bulan mulai PRB vs bulan realisasi.
+            $jenisPrbBaru  = self::tentukanJenisPrb(
+                $pasien->tanggal_mulai_prb?->toDateString(),
+                $realisasi->toDateString()
+            );
+            $jatahObatBaru = $jenisPrbBaru === 'Baru' ? self::JATAH_PRB_BARU : self::JATAH_PRB_LAMA;
+            $jadwalBaru    = $this->hitungJadwalBerikutnya($realisasi, $jatahObatBaru);
+
             // 4b. Update master pasien — semua field harus sinkron:
             //   tanggal_pengambilan_terakhir = tanggal realisasi (BUKAN jadwal)
             //   tanggal_jadwal_berikutnya    = realisasi + jatah hari (Baru=23, Lama=30)
-            //   jenis_prb                    = ditentukan dari tanggal_mulai_prb vs bulan realisasi
+            //   jenis_prb                    = dari bulan mulai PRB vs bulan realisasi
             //   jatah_obat                   = sesuai jenis_prb
             //   tanggal_realisasi            = null (reset untuk siklus baru)
             $pasien->update([
@@ -1016,8 +1004,7 @@ class KepatuhanService
 
             if ($terbaru && $terbaru->id === $riwayat->id) {
                 // Riwayat ini adalah yang terbaru → sinkronkan master.
-                // Jenis PRB ditentukan dari tanggal_mulai_prb vs bulan tanggal baru
-                // (bukan hardcoded Lama — pasien mungkin masih di bulan mulai PRB).
+                // Jenis PRB dari bulan mulai PRB vs bulan tanggal baru.
                 $jenisPrbEdit  = self::tentukanJenisPrb(
                     $pasien->tanggal_mulai_prb?->toDateString(),
                     $tanggalBaru->toDateString()
@@ -1188,5 +1175,60 @@ class KepatuhanService
             'per_fktp'          => $perFktp,
             'tanggal_evaluasi'  => $evaluasi,
         ];
+    }
+
+    /**
+     * =========================================================
+     * HITUNG TREN KEPATUHAN PER BULAN (GRAFIK DASHBOARD)
+     * =========================================================
+     *
+     * Setiap bulan dinilai dengan tentukanStatusKepatuhanPeriode() — logika
+     * yang sama dengan KPI dashboard saat filter periode dipilih — sehingga
+     * angka tren bulan X selalu sama dengan KPI periode X.
+     *
+     * Satu pasien = satu siklus per bulan (bukan satu baris riwayat), dan
+     * pasien yang jadwalnya terlewat tanpa riwayat ikut dihitung Tidak Patuh.
+     * Bulan tanpa pasien yang dinilai → persentase null (garis putus,
+     * bukan jatuh ke 0%).
+     *
+     * @return array<int, array{periode: string, bulan: string, patuh: int, tidak_patuh: int, persentase: ?float}>
+     */
+    public function hitungTrenKepatuhan(
+        ?string $tanggalEvaluasi = null,
+        ?string $filterFktp = null,
+        int $jumlahBulan = 12
+    ): array {
+        $evaluasi = $tanggalEvaluasi ?: Carbon::today()->toDateString();
+        $akhir    = Carbon::parse($evaluasi)->startOfMonth();
+
+        $query = PasienPrb::aktif()->with('riwayatPengambilanObat');
+        if ($filterFktp) {
+            $query->where('fktp_asal', $filterFktp);
+        }
+        $pasienAktif = $query->get();
+
+        $tren = [];
+        for ($i = $jumlahBulan - 1; $i >= 0; $i--) {
+            $bulan   = $akhir->copy()->subMonths($i);
+            $periode = $bulan->format('Y-m');
+
+            $patuh = 0;
+            $tidakPatuh = 0;
+            foreach ($pasienAktif as $pasien) {
+                $status = $this->tentukanStatusKepatuhanPeriode($pasien, $periode, $evaluasi)['status'];
+                if ($status === 'Patuh')       $patuh++;
+                if ($status === 'Tidak Patuh') $tidakPatuh++;
+            }
+
+            $tren[] = [
+                'periode'     => $periode,
+                'bulan'       => $bulan->translatedFormat('M Y'),
+                'patuh'       => $patuh,
+                'tidak_patuh' => $tidakPatuh,
+                'persentase'  => self::persentasePatuh($patuh, $tidakPatuh),
+            ];
+        }
+
+        return $tren;
     }
 }
