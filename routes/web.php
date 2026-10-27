@@ -32,10 +32,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/rekap', [RekapKepatuhanController::class, 'index'])->name('rekap.index');
     Route::get('/rekap/export', [RekapKepatuhanController::class, 'export'])->name('rekap.export');
 
-    // Reminder WhatsApp — DINONAKTIFKAN: sesuai ketentuan etik penelitian,
-    // No. HP pasien tidak boleh disimpan sehingga modul ini tidak punya data.
-    // ReminderController & Pages/Reminder masih ada di kode tetapi tidak dirutekan.
-
     // Pasien CRUD
     Route::resource('pasien', PasienPrbController::class)->except(['create', 'edit']);
 

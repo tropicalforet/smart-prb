@@ -49,7 +49,6 @@ class AuditLog extends Model
         'tindak_lanjut'   => 'Tindak Lanjut',
         'import'          => 'Import Excel',
         'hapus_massal'    => 'Hapus Massal',
-        'reminder'        => 'Reminder WhatsApp',
         'auth'            => 'Autentikasi',
     ];
 
@@ -64,7 +63,6 @@ class AuditLog extends Model
         'import'             => 'Import',
         'hapus_massal'       => 'Hapus Massal',
         'catat_tindak_lanjut'=> 'Catat Tindak Lanjut',
-        'buka_reminder'      => 'Buka Reminder',
         'login'              => 'Login',
         'logout'             => 'Logout',
         'ganti_password'     => 'Ganti Password',

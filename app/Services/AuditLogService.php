@@ -239,13 +239,6 @@ class AuditLogService
         );
     }
 
-    public function bukaReminder(int $jumlah, string $keterangan = ''): void
-    {
-        $this->catat('reminder', 'buka_reminder',
-            "Membuka reminder WhatsApp untuk {$jumlah} pasien" . ($keterangan ? " ({$keterangan})" : '')
-        );
-    }
-
     public function login(): void
     {
         $this->catat('auth', 'login', 'Login ke sistem');

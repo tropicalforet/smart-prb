@@ -56,7 +56,6 @@ const MODUL_COLORS: Record<string, string> = {
     tindak_lanjut: 'bg-blue-100 text-blue-700 border-blue-200',
     import:        'bg-purple-100 text-purple-700 border-purple-200',
     hapus_massal:  'bg-rose-100 text-rose-700 border-rose-200',
-    reminder:      'bg-green-100 text-green-700 border-green-200',
     auth:          'bg-slate-100 text-slate-700 border-slate-200',
 };
 
@@ -71,7 +70,6 @@ const AKSI_COLORS: Record<string, string> = {
     import:              'bg-purple-50 text-purple-700',
     hapus_massal:        'bg-rose-50 text-rose-700',
     catat_tindak_lanjut: 'bg-blue-50 text-blue-700',
-    buka_reminder:       'bg-green-50 text-green-700',
     login:               'bg-slate-50 text-slate-700',
     logout:              'bg-slate-50 text-slate-500',
     ganti_password:      'bg-indigo-50 text-indigo-700',
