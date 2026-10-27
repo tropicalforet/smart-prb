@@ -1,5 +1,4 @@
 import * as XLSX from 'xlsx';
-import * as XLSX from 'xlsx';
 import { PasienPRB } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -313,19 +312,47 @@ function kosong(val: any): boolean {
 // ─────────────────────────────────────────────────────────────────────────
 
 const BULAN_HEADER: [RegExp, number][] = [
-    [/^(januari|jan)$/, 1],      [/^(februari|feb)$/, 2],          [/^(maret|mar)$/, 3],
-    [/^(april|apr)$/, 4],        [/^(mei|may)$/, 5],               [/^(juni|jun)$/, 6],
-    [/^(juli|jul)$/, 7],         [/^(agustus|agu|agt|aug)$/, 8],   [/^(september|sept|sep)$/, 9],
-    [/^(oktober|okt|oct)$/, 10], [/^(november|nov)$/, 11],         [/^(desember|des|dec)$/, 12],
+    [/^(januari|january|jan)$/, 1],   [/^(februari|february|feb)$/, 2],     [/^(maret|march|mar)$/, 3],
+    [/^(april|apr)$/, 4],             [/^(mei|may)$/, 5],                   [/^(juni|june|jun)$/, 6],
+    [/^(juli|july|jul)$/, 7],         [/^(agustus|august|agu|agt|aug)$/, 8], [/^(september|sept|sep)$/, 9],
+    [/^(oktober|october|okt|oct)$/, 10], [/^(november|nov)$/, 11],          [/^(desember|december|des|dec)$/, 12],
 ];
 
-/** "MARET", "APR TGL", "MEI TGL" → nomor bulan; header lain → null. */
+/**
+ * Judul kolom bulan → nomor bulan + tahun (jika ditulis di judul).
+ *
+ *   "MARET", "APR TGL"                    → { bulan: 3/4, tahun: null }
+ *   "JANUARI 2027", "Januari-2027", "TGL JAN 2027" → { bulan: 1, tahun: 2027 }
+ *   "DES 26", "Des'26"                    → { bulan: 12, tahun: 2026 }
+ *   header lain                           → null
+ */
+export function kolomBulan(header: string): { bulan: number; tahun: number | null } | null {
+    const nk = normKey(header).replace(/tanggal|tgl/g, '');
+    const m = nk.match(/^([a-z]+)(\d{2}|\d{4})?$/);
+    if (!m) return null;
+
+    const pola = BULAN_HEADER.find(([p]) => p.test(m[1]));
+    if (!pola) return null;
+
+    const tahun = m[2] ? (m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2])) : null;
+    return { bulan: pola[1], tahun };
+}
+
+/** "MARET", "JANUARI 2027" → nomor bulan; header lain → null. */
 export function bulanDariHeader(header: string): number | null {
-    const nk = normKey(header).replace(/(tgl|tanggal)$/, '');
-    for (const [pola, bulan] of BULAN_HEADER) {
-        if (pola.test(nk)) return bulan;
-    }
-    return null;
+    return kolomBulan(header)?.bulan ?? null;
+}
+
+/**
+ * Judul yang memuat nama bulan tetapi tidak dikenali kolomBulan()
+ * (mis. "Pengambilan Januari", "01/2027", "JAN 2027 (ambil)") — isinya
+ * tidak terbaca, jadi petugas perlu diberi tahu, bukan diabaikan diam-diam.
+ */
+const NAMA_BULAN_PENUH = /januari|january|februari|february|maret|march|april|juni|june|juli|july|agustus|august|september|oktober|october|november|desember|december/;
+function miripKolomBulan(header: string): boolean {
+    const nk = normKey(header);
+    return NAMA_BULAN_PENUH.test(nk) || /^(jan|feb|mar|apr|mei|may|jun|jul|agu|agt|aug|sep|okt|oct|nov|des|dec)\d/.test(nk)
+        || /^\d{1,2}\d{4}$/.test(nk);
 }
 
 /**
@@ -442,7 +469,8 @@ function parseTanggalMulai(raw: any): { tanggal: string; peringatan?: string; ga
  * Mendukung dua bentuk file:
  *   1. Template sistem — satu kolom "Tanggal Pengambilan Obat Terakhir".
  *   2. Data apotek per bulan — kolom MARET / APRIL / MEI berisi tanggal
- *      (hari) pengambilan. Tahun diambil dari opsi `tahunBulan`.
+ *      (hari) pengambilan. Tahun dari judul kolom ("JANUARI 2027") bila
+ *      ada, selain itu dari opsi `tahunBulan`.
  *
  * Mapping kolom bersifat multi-alias: header dalam berbagai
  * variasi nama (dengan spasi, snake_case, kapitalisasi) tetap
@@ -537,17 +565,41 @@ export function validateImportData(
         };
 
         // ── Pengambilan dari kolom bulan (data apotek per bulan) ───────
+        // Tahun dari judul kolom ("JANUARI 2027") bila ada; selain itu
+        // dari opsi tahunBulan. Kolom diproses urut kiri → kanan.
         const pengambilan: string[] = [];
+        let kolomTanpaTahunSebelumnya: { header: string; bulan: number } | null = null;
         for (const [header, val] of Object.entries(row)) {
             if (header.startsWith('_')) continue;
-            const bulan = bulanDariHeader(header);
-            if (bulan === null) continue;
+            const kolom = kolomBulan(header);
+            if (kolom === null) {
+                if (!kosong(val) && miripKolomBulan(header)) {
+                    warnings.push(
+                        `Kolom "${header.trim()}" mirip kolom bulan tetapi tidak dikenali — isinya tidak diimpor. ` +
+                        `Gunakan judul seperti "JANUARI" atau "JANUARI 2027".`
+                    );
+                }
+                continue;
+            }
+
+            // Bulan mundur tanpa tahun di judul (mis. DESEMBER → JANUARI)
+            // berarti file melewati pergantian tahun, padahal semua kolom
+            // akan dibaca dengan tahun yang sama.
+            if (kolom.tahun === null) {
+                if (kolomTanpaTahunSebelumnya && kolom.bulan < kolomTanpaTahunSebelumnya.bulan) {
+                    warnings.push(
+                        `Kolom ${kolomTanpaTahunSebelumnya.header.trim()} → ${header.trim()} melewati pergantian tahun, ` +
+                        `tetapi semua dibaca sebagai tahun ${tahunBulan}. Tulis tahun di judul kolom, mis. "${header.trim()} ${tahunBulan + 1}".`
+                    );
+                }
+                kolomTanpaTahunSebelumnya = { header, bulan: kolom.bulan };
+            }
 
             const { hari, peringatan } = parseHariAmbil(val);
             peringatan.forEach(p => warnings.push(`${header.trim()}: ${p}`));
 
             for (const h of hari) {
-                const iso = buildDateString(tahunBulan, bulan, h);
+                const iso = buildDateString(kolom.tahun ?? tahunBulan, kolom.bulan, h);
                 if (!iso) {
                     warnings.push(`${header.trim()}: tanggal ${h} tidak ada di bulan tersebut, dilewati`);
                 } else if (!pengambilan.includes(iso)) {
@@ -1037,7 +1089,9 @@ export function downloadImportTemplate(): void {
         [''],
         ['FORMAT PER BULAN (alternatif):'],
         ['- Kolom tanggal pengambilan boleh diganti kolom per bulan (mis. MARET | APRIL | MEI) berisi tanggal ambil saja.'],
-        ['- Ambil 2x dalam sebulan: tulis "1, 29". Tidak ambil: isi "-". Tahun dipilih saat impor.'],
+        ['- Ambil 2x dalam sebulan: tulis "1, 29". Tidak ambil: isi "-".'],
+        ['- Tahun: tulis di judul kolom (mis. DESEMBER 2026 | JANUARI 2027), wajib bila file melewati pergantian tahun.'],
+        ['  Judul tanpa tahun (mis. MARET) memakai tahun yang dipilih saat impor.'],
     ];
 
     const wsPetunjuk = XLSX.utils.aoa_to_sheet(petunjukData);

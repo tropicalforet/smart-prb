@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info, TriangleAlert, CalendarDays } from 'lucide-react';
 import {
-    parseExcelFile, validateImportData, buildImportPayload, bulanDariHeader,
+    parseExcelFile, validateImportData, buildImportPayload, kolomBulan,
     ValidationResult, ParseMeta, downloadImportTemplate,
 } from '@/lib/excel-utils';
 
@@ -49,9 +49,10 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
     const [uploadError, setUploadError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Format data apotek per bulan (kolom MARET/APRIL/MEI) → perlu tahun
+    // Format data apotek per bulan (kolom MARET/APRIL/MEI) tanpa tahun di
+    // judul → perlu tahun. Kolom seperti "JANUARI 2027" sudah membawa tahunnya.
     const adaKolomBulan = useMemo(
-        () => rawRows.some(r => Object.keys(r).some(k => !k.startsWith('_') && bulanDariHeader(k) !== null)),
+        () => rawRows.some(r => Object.keys(r).some(k => !k.startsWith('_') && kolomBulan(k)?.tahun === null)),
         [rawRows]
     );
 
@@ -290,7 +291,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                 <CalendarDays className="w-4 h-4 text-amber-600 shrink-0" />
                                 <span>
                                     File berformat <span className="font-semibold">per bulan</span> — kolom bulan hanya berisi tanggal.
-                                    Tahun data:
+                                    Tahun untuk kolom bulan tanpa tahun di judulnya (kolom seperti "JANUARI 2027" memakai tahunnya sendiri):
                                 </span>
                                 <input
                                     type="number"
