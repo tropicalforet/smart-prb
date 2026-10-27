@@ -25,7 +25,9 @@ class RekapKepatuhanController extends Controller
         // Tanggal evaluasi kita default ke hari ini, atau bisa di set dari filter
         $tanggalEvaluasi = $request->input('tanggal_evaluasi', Carbon::today()->toDateString());
 
-        $query = PasienPrb::with([
+        // Rekap hanya untuk pasien Aktif — pasien Pasif sudah keluar dari
+        // pemantauan, jadi tidak ditampilkan maupun dihitung di total.
+        $query = PasienPrb::aktif()->with([
             'riwayatPengambilanObat' => fn($q) =>
                 $q->orderBy('tanggal_pengambilan', 'desc'),
         ]);
@@ -78,7 +80,6 @@ class RekapKepatuhanController extends Controller
         $totalPatuh            = $allPasien->where('status_kepatuhan', 'Patuh')->count();
         $totalToleransi        = $allPasien->where('status_kepatuhan', 'Dalam Toleransi')->count();
         $totalTidakPatuh       = $allPasien->where('status_kepatuhan', 'Tidak Patuh')->count();
-        $totalPasif            = $allPasien->where('status_kepatuhan', 'Pasif')->count();
         $totalTidakAdaTransaksi = $allPasien->where('status_kepatuhan', 'Tidak Ada Transaksi')->count();
 
         // Total = seluruh evaluasi kecuali 'Tidak Ada Transaksi'
@@ -101,7 +102,6 @@ class RekapKepatuhanController extends Controller
                 'dalam_toleransi'  => $patients->where('status_kepatuhan', 'Dalam Toleransi')->count(),
                 'tidak_patuh'      => $tidakPatuhFktp,
                 'persentase_patuh' => KepatuhanService::persentasePatuh($patuhFktp, $tidakPatuhFktp),
-                'pasif'            => $patients->where('status_kepatuhan', 'Pasif')->count(),
                 'belum_jatuh_tempo'=> $patients->where('status_kepatuhan', 'Belum Jatuh Tempo')->count(),
             ];
         }
@@ -135,7 +135,6 @@ class RekapKepatuhanController extends Controller
                 'patuh'             => $totalPatuh,
                 'dalam_toleransi'   => $totalToleransi,
                 'tidak_patuh'       => $totalTidakPatuh,
-                'pasif'             => $totalPasif,
                 // Pasien belum melewati batas penilaian (sebelum H-3)
                 // Tidak masuk denominator persentase kepatuhan final.
                 'belum_jatuh_tempo' => $totalBelumJatuhTempo,

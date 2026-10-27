@@ -48,7 +48,8 @@ class RekapKepatuhanExport implements
      */
     public function collection()
     {
-        $query = PasienPrb::with([
+        // Sama dengan halaman Rekap: hanya pasien Aktif.
+        $query = PasienPrb::aktif()->with([
             'riwayatPengambilanObat' => fn($q) =>
                 $q->orderBy('tanggal_pengambilan', 'desc'),
             'riwayatTindakLanjut' => fn($q) =>
