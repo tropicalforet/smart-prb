@@ -29,11 +29,9 @@ class RiwayatTindakLanjut extends Model
 
     public const TINDAKAN_OPTIONS = [
         'Sudah mengambil obat',
-        'Pasien akan datang',
-        'Belum dapat dihubungi',
-        'Pasien berhalangan',
-        'Rujuk FKTP',
-        'Lainnya',
+        'Belum mengambil obat',
+        'Tidak dapat dihubungi',
+        'Kendala pengambilan obat',
     ];
 
     public function pasienPrb(): BelongsTo

@@ -52,11 +52,9 @@ export type StatusKepatuhan =
 
 export type TindakanFollowUp =
     | 'Sudah mengambil obat'
-    | 'Pasien akan datang'
-    | 'Belum dapat dihubungi'
-    | 'Pasien berhalangan'
-    | 'Rujuk FKTP'
-    | 'Lainnya';
+    | 'Belum mengambil obat'
+    | 'Tidak dapat dihubungi'
+    | 'Kendala pengambilan obat';
 
 export type AlasanPasif =
     | 'Rujuk Balik ke RS'
@@ -83,7 +81,7 @@ export interface RiwayatTindakLanjut {
     pasien_prb_id: string;
     tanggal_jam: string;
     petugas: string;
-    tindakan: TindakanFollowUp;
+    tindakan: TindakanFollowUp | string; // histori lama bisa berisi pilihan sebelumnya
     catatan: string | null;
     update_realisasi_otomatis: boolean;
     created_at: string;
@@ -155,11 +153,9 @@ export const DIAGNOSIS_OPTIONS: DiagnosisPRB[] = [
 
 export const TINDAKAN_OPTIONS: TindakanFollowUp[] = [
     'Sudah mengambil obat',
-    'Pasien akan datang',
-    'Belum dapat dihubungi',
-    'Pasien berhalangan',
-    'Rujuk FKTP',
-    'Lainnya',
+    'Belum mengambil obat',
+    'Tidak dapat dihubungi',
+    'Kendala pengambilan obat',
 ];
 
 export const ALASAN_PASIF_OPTIONS: AlasanPasif[] = [

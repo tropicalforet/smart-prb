@@ -7,6 +7,7 @@ use App\Models\RiwayatTindakLanjut;
 use App\Services\AuditLogService;
 use App\Services\KepatuhanService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TindakLanjutController extends Controller
 {
@@ -22,9 +23,9 @@ class TindakLanjutController extends Controller
     {
         $validated = $request->validate([
             'petugas'           => 'nullable|string|max:255',
-            'tindakan'          => 'required|string',
+            'tindakan'          => ['required', Rule::in(RiwayatTindakLanjut::TINDAKAN_OPTIONS)],
             'catatan'           => 'nullable|string',
-            'tanggal_realisasi' => 'nullable|date',
+            'tanggal_realisasi' => 'nullable|required_if:tindakan,Sudah mengambil obat|date|before_or_equal:today',
         ]);
 
         // Resolusi nama petugas: auth user → input form → fallback

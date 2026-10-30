@@ -623,6 +623,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                     value={tanggalRealisasi}
                                                     onChange={(e) => setTanggalRealisasi(e.target.value)}
                                                     required
+                                                    max={new Date().toLocaleDateString('en-CA')}
                                                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
                                                 />
                                             </div>

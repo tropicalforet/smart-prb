@@ -88,7 +88,7 @@ class PasienPrbSeeder extends Seeder
                     $pasien->riwayatTindakLanjut()->create([
                         'tanggal_jam' => $hariIni->copy()->subDays(5),
                         'petugas' => 'Apoteker Rini',
-                        'tindakan' => 'Belum dapat dihubungi',
+                        'tindakan' => 'Tidak dapat dihubungi',
                         'catatan' => 'Ditelepon 2x tidak diangkat, dikirim WA hanya centang 1',
                         'update_realisasi_otomatis' => false
                     ]);
