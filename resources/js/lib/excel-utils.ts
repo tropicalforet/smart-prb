@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { samarkanNama } from '@/lib/samaran';
-import { PasienPRB } from '@/types';
+import { PasienPRB, DIAGNOSIS_OPTIONS } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KONSTANTA DETEKSI SHEET DATA
@@ -661,6 +661,16 @@ export function validateImportData(
 
         if (!mapped.diagnosis_prb || mapped.diagnosis_prb.length === 0) {
             errors.push('Diagnosis PRB wajib diisi');
+        } else {
+            // Hanya 9 diagnosis PRB yang diteliti. Sel campuran ("HT, GOUT"):
+            // diagnosis PRB tetap diimport, sisanya dibuang dengan peringatan.
+            const bukanPrb = mapped.diagnosis_prb.filter((d) => !(DIAGNOSIS_OPTIONS as string[]).includes(d));
+            if (bukanPrb.length === mapped.diagnosis_prb.length) {
+                errors.push(`Diagnosis ${bukanPrb.join(', ')} bukan salah satu dari 9 diagnosis PRB`);
+            } else if (bukanPrb.length > 0) {
+                mapped.diagnosis_prb = mapped.diagnosis_prb.filter((d) => !bukanPrb.includes(d));
+                warnings.push(`Diagnosis ${bukanPrb.join(', ')} bukan diagnosis PRB — tidak diimport`);
+            }
         }
 
         // Tanggal Mulai PRB boleh kosong (jenis PRB dari pengambilan pertama:

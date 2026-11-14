@@ -242,7 +242,7 @@ class RevisiBimbinganTest extends TestCase
         $this->assertCount(5, $kode(''));
 
         $this->get('/pasien')->assertInertia(fn (Assert $page) => $page
-            ->where('diagnosisOptions', fn ($opsi) => collect($opsi)->contains('Gout') && collect($opsi)->contains('SLE')));
+            ->where('diagnosisOptions', fn ($opsi) => !collect($opsi)->contains('Gout') && collect($opsi)->contains('SLE')));
 
         $export = $this->getJson('/pasien-export?filter_diagnosis[]=PPOK&filter_diagnosis[]=Asma')->json();
         $this->assertSame(['PRB-002', 'PRB-004'], array_column($export, 'Kode Pasien'));

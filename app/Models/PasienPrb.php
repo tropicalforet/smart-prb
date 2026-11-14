@@ -73,12 +73,8 @@ class PasienPrb extends Model
     ];
 
     /**
-     * Daftar referensi diagnosis PRB yang umum ditangani apotek BPJS.
-     * Digunakan sebagai pilihan dropdown di form manual (UI).
-     *
-     * BUKAN VALIDATOR: Diagnosis dari import Excel atau input bebas
-     * tidak dibatasi oleh daftar ini. Apotek/FKTP boleh memasukkan
-     * diagnosis apapun yang sesuai data aktual mereka.
+     * 9 diagnosis Program Rujuk Balik — satu-satunya diagnosis yang diterima
+     * (form, import, filter). Diagnosis lain di luar penelitian.
      */
     public const DIAGNOSIS_OPTIONS = [
         'Diabetes Melitus',
@@ -91,6 +87,32 @@ class PasienPrb extends Model
         'Skizofrenia',
         'SLE',
     ];
+
+    /** Singkatan di data apotek (sama dengan ALIAS_DIAGNOSIS di excel-utils.ts). */
+    private const ALIAS_DIAGNOSIS = [
+        'HT' => 'Hipertensi',
+        'DM' => 'Diabetes Melitus',
+        'JANTUNG' => 'Penyakit Jantung', 'PJK' => 'Penyakit Jantung',
+        'SRTOKE' => 'Stroke',
+        'EPI' => 'Epilepsi',
+        'SKIZO' => 'Skizofrenia', 'SKIZOFREN' => 'Skizofrenia', 'SCZ' => 'Skizofrenia',
+    ];
+
+    /**
+     * Nama baku salah satu dari 9 diagnosis PRB ("dm", "HT", "asma" →
+     * "Diabetes Melitus", "Hipertensi", "Asma"); null bila di luar 9 diagnosis.
+     */
+    public static function bakukanDiagnosis(?string $diagnosis): ?string
+    {
+        $kunci = mb_strtoupper(preg_replace('/\s+/', ' ', trim((string) $diagnosis)));
+        foreach (self::DIAGNOSIS_OPTIONS as $opsi) {
+            if (mb_strtoupper($opsi) === $kunci) {
+                return $opsi;
+            }
+        }
+
+        return self::ALIAS_DIAGNOSIS[$kunci] ?? null;
+    }
 
     /** Pasif & Meninggal keluar dari pemantauan (tidak dinilai kepatuhannya). */
     public const STATUS_OPTIONS = ['Aktif', 'Pasif', 'Meninggal'];

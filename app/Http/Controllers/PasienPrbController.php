@@ -360,19 +360,7 @@ class PasienPrbController extends Controller
                 ],
 
                 // 9 diagnosis baku + diagnosis lain yang ada di data (mis. dari import)
-                'diagnosisOptions' =>
-                    collect(PasienPrb::DIAGNOSIS_OPTIONS)
-                        ->merge(
-                            PasienPrb::pluck('diagnosis_prb')
-                                ->flatten()
-                                ->map(fn ($d) => trim((string) $d))
-                                ->filter()
-                                ->unique()
-                                ->sort()
-                        )
-                        ->unique()
-                        ->values()
-                        ->all(),
+                'diagnosisOptions' => PasienPrb::DIAGNOSIS_OPTIONS,
 
                 'fktpOptions' =>
                     PasienPrb::select('fktp_asal')
@@ -430,14 +418,11 @@ class PasienPrbController extends Controller
                 'min:1'
             ],
 
-            // Diagnosis PRB bersifat TERBUKA — tidak dibatasi daftar tetap.
-            // Apotek/FKTP dapat menggunakan nama diagnosis sesuai data aktual
-            // mereka. DIAGNOSIS_OPTIONS di model adalah referensi untuk UI,
-            // bukan validator ketat.
+            // Hanya 9 diagnosis PRB
             'diagnosis_prb.*' => [
                 'required',
                 'string',
-                'max:100',
+                Rule::in(PasienPrb::DIAGNOSIS_OPTIONS),
             ],
 
             'tanggal_mulai_prb' =>
@@ -740,11 +725,11 @@ class PasienPrbController extends Controller
                 'max:1',
             ],
 
-            // Diagnosis PRB bersifat TERBUKA — tidak dibatasi daftar tetap.
+            // Hanya 9 diagnosis PRB
             'diagnosis_prb.*' => [
                 'required',
                 'string',
-                'max:100',
+                Rule::in(PasienPrb::DIAGNOSIS_OPTIONS),
             ],
 
             'tanggal_mulai_prb' =>
@@ -1459,6 +1444,14 @@ class PasienPrbController extends Controller
             }
             if (empty($diagnosisPrb)) {
                 $invalidReasons[] = 'Diagnosis PRB wajib diisi';
+            } else {
+                // Hanya 9 diagnosis PRB yang diteliti; nama dibakukan ("DM" → Diabetes Melitus)
+                $bukanPrb = array_values(array_filter($diagnosisPrb, fn ($d) => PasienPrb::bakukanDiagnosis($d) === null));
+                if ($bukanPrb) {
+                    $invalidReasons[] = 'Diagnosis ' . implode(', ', $bukanPrb) . ' bukan salah satu dari 9 diagnosis PRB';
+                } else {
+                    $diagnosisPrb = array_values(array_unique(array_map([PasienPrb::class, 'bakukanDiagnosis'], $diagnosisPrb)));
+                }
             }
             // Kode pasien dari file (ID_PRB) tidak boleh menunjuk pasien lain —
             // pasien dicari lewat kode lebih dulu, jadi transaksi akan salah tempat.

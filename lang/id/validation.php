@@ -56,6 +56,9 @@ return [
         'diagnosis_prb' => [
             'max' => 'Satu data PRB hanya untuk satu diagnosis. Tambahkan diagnosis lain lewat tombol Tambah.',
         ],
+        'diagnosis_prb.*' => [
+            'in' => 'Diagnosis harus salah satu dari 9 diagnosis PRB.',
+        ],
         'no_whatsapp' => [
             'regex' => 'Format No. WhatsApp tidak valid. Contoh: 081234567890.',
         ],
