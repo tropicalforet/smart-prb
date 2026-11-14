@@ -46,7 +46,7 @@ echo "==> 3/7 Konfigurasi .env (production)"
 if [ ! -f .env ]; then
     cp .env.example .env
     sed -i \
-        -e "s|^APP_NAME=.*|APP_NAME=\"SMART PRB\"|" \
+        -e "s|^APP_NAME=.*|APP_NAME=\"Dashboard PRB\"|" \
         -e "s|^APP_ENV=.*|APP_ENV=production|" \
         -e "s|^APP_DEBUG=.*|APP_DEBUG=false|" \
         -e "s|^APP_URL=.*|APP_URL=https://${DOMAIN}|" \

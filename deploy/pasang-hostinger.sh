@@ -39,7 +39,7 @@ echo "==> 2/6 Konfigurasi .env & dependensi"
 if [ ! -f .env ]; then
     cp .env.example .env
     sed -i \
-        -e "s|^APP_NAME=.*|APP_NAME=\"SMART PRB\"|" \
+        -e "s|^APP_NAME=.*|APP_NAME=\"Dashboard PRB\"|" \
         -e "s|^APP_ENV=.*|APP_ENV=production|" \
         -e "s|^APP_DEBUG=.*|APP_DEBUG=false|" \
         -e "s|^APP_URL=.*|APP_URL=https://${DOMAIN}|" \
@@ -47,6 +47,8 @@ if [ ! -f .env ]; then
         .env
     echo "SESSION_SECURE_COOKIE=true" >> .env
 fi
+# Alamat web selalu mengikuti domain yang dipasang (juga setelah ganti domain)
+sed -i "s|^APP_URL=.*|APP_URL=https://${DOMAIN}|" .env
 # Hostinger: "composer" bisa masih Composer 1; Composer 2 bernama "composer2"
 COMPOSER_BIN="${COMPOSER_BIN:-$(command -v composer2 || command -v composer || true)}"
 if [ -z "$COMPOSER_BIN" ]; then

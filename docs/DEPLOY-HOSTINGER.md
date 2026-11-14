@@ -115,6 +115,29 @@ cd ~/domains/prb-namakamu.com/smart-prb && git pull && bash deploy/pasang-hostin
 lewat web di server (mis. tindak lanjut baru) **tertimpa**; database server sebelumnya
 dibackup otomatis ke `database/database.sqlite.backup-…`.
 
+## Ganti domain (dari domain sementara ke domain asli)
+
+1. **Siapkan domain.** Beli di hPanel → **Domain**, atau pakai domain yang sudah dimiliki dan arahkan
+   *nameserver*-nya ke nameserver Hostinger yang tertera di hPanel.
+2. **Hubungkan ke website.** hPanel → website → **Dashboard → Hubungkan domain** (atau pengaturan website
+   → ganti domain). Tunggu sampai domain aktif dan SSL terpasang (bisa beberapa menit sampai beberapa jam).
+3. **Cari folder aplikasi** di SSH. Hostinger bisa memindahkan folder ke nama domain baru:
+
+   ```bash
+   ls ~/domains
+   ```
+
+   Aplikasi ada di `~/domains/<domain-lama-atau-baru>/smart-prb`.
+4. **Pasang ulang dengan domain baru** (data dan akun tidak berubah):
+
+   ```bash
+   cd ~/domains/<folder-dari-langkah-3>/smart-prb
+   bash deploy/pasang-hostinger.sh domain-baru.com
+   ```
+
+   Skrip memperbarui `APP_URL` di `.env`, membuat ulang cache, dan mengarahkan `public_html` domain baru
+   ke aplikasi. Semua pengguna perlu login ulang.
+
 ## Backup data dari server ke laptop
 
 ```bash
