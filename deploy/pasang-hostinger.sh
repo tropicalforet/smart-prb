@@ -58,11 +58,17 @@ if [ "$PHP_BIN" = php ]; then
 else
     COMPOSER_CMD=("$PHP_BIN" "$COMPOSER_BIN")
 fi
-if ! "${COMPOSER_CMD[@]}" --version 2>/dev/null | grep -q 'version 2'; then
+if ! "${COMPOSER_CMD[@]}" --version --no-ansi 2>/dev/null | grep -q 'version 2'; then
     echo "Butuh Composer 2 ($COMPOSER_BIN bukan Composer 2). Jalankan dengan COMPOSER_BIN=\$(command -v composer2)."
     exit 1
 fi
-"${COMPOSER_CMD[@]}" install --no-dev --optimize-autoloader --no-interaction
+# --no-scripts: Hostinger menonaktifkan proc_open, yang dipakai Composer untuk
+# menjalankan skrip "@php artisan ...". Skrip itu dipanggil langsung di bawah.
+"${COMPOSER_CMD[@]}" install --no-dev --optimize-autoloader --no-interaction --no-scripts
+# Pengganti ComposerScripts::postAutoloadDump: buang cache daftar paket lama
+# (mis. paket dev seperti Pail) sebelum didaftar ulang.
+rm -f bootstrap/cache/packages.php bootstrap/cache/services.php bootstrap/cache/config.php
+"$PHP_BIN" artisan package:discover --ansi
 grep -q '^APP_KEY=base64' .env || "$PHP_BIN" artisan key:generate --force
 
 echo "==> 3/6 Aset frontend"
