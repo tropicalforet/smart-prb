@@ -1443,14 +1443,6 @@ export default function PasienIndex({
                                             Hapus {selectedIds.size} Pasien
                                         </h3>
 
-                                        <p className="mt-2 text-sm text-slate-600">
-                                            Apakah Anda yakin ingin menghapus{' '}
-                                            <span className="font-bold text-rose-600">
-                                                {selectedIds.size} pasien
-                                            </span>{' '}
-                                            yang dipilih? Tindakan ini tidak dapat dibatalkan dan semua riwayat terkait akan ikut terhapus.
-                                        </p>
-
                                         <div className="mt-3 p-3 bg-rose-50 rounded-lg border border-rose-200">
                                             <div className="text-xs text-rose-700 font-medium flex items-center gap-2">
                                                 <AlertTriangle className="w-3.5 h-3.5" />
