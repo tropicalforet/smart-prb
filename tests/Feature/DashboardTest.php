@@ -31,7 +31,7 @@ class DashboardTest extends TestCase
     {
         Carbon::setTestNow('2026-10-24');
 
-        // 12 pasien overdue (Tidak Patuh) + 3 pasien yang jadwalnya belum tiba
+        // 12 pasien overdue (Tidak Teratur) + 3 pasien yang jadwalnya belum tiba
         for ($i = 1; $i <= 12; $i++) {
             $this->pasien($i, Carbon::today()->subDays(10 + $i)->toDateString());
         }
@@ -44,7 +44,7 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Dashboard')
-                // tabel "Pasien Tidak Patuh" sudah dihapus dari dashboard
+                // tabel "Pasien Tidak Teratur" sudah dihapus dari dashboard
                 ->missing('pasienAktif')
                 ->where('statistik.total_aktif', 15)
             );
@@ -70,7 +70,7 @@ class DashboardTest extends TestCase
             ]);
         }
 
-        // Pasien 2: jadwal September terlewat tanpa riwayat → Tidak Patuh
+        // Pasien 2: jadwal September terlewat tanpa riwayat → Tidak Teratur
         $this->pasien(2, '2026-09-05');
 
         $user = User::factory()->create();

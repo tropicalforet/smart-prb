@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { PasienPRB, TINDAKAN_OPTIONS, DIAGNOSIS_OPTIONS, ALASAN_PASIF_OPTIONS } from '@/types';
+import { PasienPRB, StatusPasien, TINDAKAN_OPTIONS, KATEGORI_TINDAK_LANJUT_OPTIONS, DIAGNOSIS_OPTIONS, ALASAN_PASIF_OPTIONS, STATUS_PASIEN_OPTIONS } from '@/types';
 import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import {
     User, IdCard, FileText, Activity, Calendar,
-    History, MessageSquarePlus, Stethoscope, Save, Pencil
+    History, MessageSquarePlus, Stethoscope, Save, Pencil, Phone, Send
 } from 'lucide-react';
+import { pesanPengingat, tahapPengingat, tautanWhatsapp, formatNoWhatsapp, LABEL_TAHAP } from '@/lib/pengingat-wa';
+import { samarkanNama } from '@/lib/samaran';
 
 /** diagnosis_prb bisa tersimpan sebagai array atau string JSON. */
 function daftarDiagnosis(diag: unknown): string[] {
@@ -25,10 +27,12 @@ function daftarDiagnosis(diag: unknown): string[] {
 const inputClass = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500';
 
 interface FormUbahData {
+    nama_samaran: string;
+    no_whatsapp: string;
     fktp_asal: string;
     diagnosis_prb: string[];
     tanggal_mulai_prb: string;
-    status: 'Aktif' | 'Pasif';
+    status: StatusPasien;
     alasan_pasif: string;
 }
 
@@ -51,15 +55,18 @@ interface Props {
     onClose: () => void;
     tanggalEvaluasi: string;
     filterPeriode?: string;
+    /** Dipanggil setelah tindak lanjut berkategori tersimpan (untuk menyesuaikan filter Data Pasien). */
+    onTindakLanjutTersimpan?: (kategori: string) => void;
 }
 
-export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi, filterPeriode }: Props) {
+export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi, filterPeriode, onTindakLanjutTersimpan }: Props) {
     const [pasien, setPasien] = useState<PasienPRB | null>(null);
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'profil' | 'riwayat' | 'tindak_lanjut'>('profil');
 
     // Form state — tindak lanjut
     const [tindakan, setTindakan] = useState('');
+    const [kategori, setKategori] = useState('');
     const [catatan, setCatatan] = useState('');
     const [tanggalRealisasi, setTanggalRealisasi] = useState(new Date().toISOString().split('T')[0]);
     const [submitting, setSubmitting] = useState(false);
@@ -118,21 +125,19 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         if (!pasien) return;
         setErrorsUbah({});
         setFormUbah({
+            nama_samaran: pasien.nama_samaran ?? '',
+            no_whatsapp: pasien.no_whatsapp ? formatNoWhatsapp(pasien.no_whatsapp) : '',
             fktp_asal: pasien.fktp_asal ?? '',
             diagnosis_prb: daftarDiagnosis(pasien.diagnosis_prb),
             tanggal_mulai_prb: (pasien.tanggal_mulai_prb ?? '').slice(0, 10),
-            status: pasien.status === 'Pasif' ? 'Pasif' : 'Aktif',
+            status: pasien.status,
             alasan_pasif: pasien.alasan_pasif ?? '',
         });
     };
 
-    const toggleDiagnosis = (diag: string) => {
-        setFormUbah(f => f && ({
-            ...f,
-            diagnosis_prb: f.diagnosis_prb.includes(diag)
-                ? f.diagnosis_prb.filter(d => d !== diag)
-                : [...f.diagnosis_prb, diag],
-        }));
+    // Satu data PRB = satu diagnosis → pilih satu (diagnosis lain lewat Tambah)
+    const pilihDiagnosis = (diag: string) => {
+        setFormUbah(f => f && ({ ...f, diagnosis_prb: [diag] }));
     };
 
     const handleSimpanUbahData = (e: React.FormEvent) => {
@@ -142,6 +147,8 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         setErrorsUbah({});
         router.put(`/pasien/${pasien.id}`, {
             noka: pasien.noka, // NOKA = identitas pasien, tidak diubah dari sini
+            nama_samaran: samarkanNama(formUbah.nama_samaran),
+            no_whatsapp: formUbah.no_whatsapp.trim(),
             fktp_asal: formUbah.fktp_asal.replace(/\s+/g, ' ').trim(),
             diagnosis_prb: formUbah.diagnosis_prb,
             tanggal_mulai_prb: formUbah.tanggal_mulai_prb,
@@ -190,6 +197,11 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         setSubmitting(true);
 
         const data: any = { tindakan, catatan };
+        if (tindakan === 'Belum mengambil obat') {
+            data.kategori = kategori;
+        }
+        // Kategori yang disimpan — "Sudah mengambil obat" tidak punya kategori
+        const kategoriTersimpan = tindakan === 'Belum mengambil obat' ? kategori : '';
         if (tindakan === 'Sudah mengambil obat') {
             data.tanggal_realisasi = tanggalRealisasi;
         }
@@ -199,8 +211,10 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
             onSuccess: () => {
                 setSubmitting(false);
                 setTindakan('');
+                setKategori('');
                 setCatatan('');
                 refreshPasien();
+                if (kategoriTersimpan) onTindakLanjutTersimpan?.(kategoriTersimpan);
             },
             onError: () => setSubmitting(false),
         });
@@ -217,7 +231,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Detail: ${pasien.kode_pasien}`} maxWidth="4xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={`Detail: ${pasien.kode_pasien} · ${(pasien.diagnosis_prb ?? []).join(', ')}`} maxWidth="4xl">
             <div className="flex flex-col lg:flex-row gap-6">
                 {/* Left Column: Fixed Profile Summary */}
                 <div className="lg:w-1/3 space-y-4">
@@ -228,8 +242,16 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                         <h4 className="text-center font-bold text-slate-800 text-lg leading-tight mb-1">
                             {pasien.kode_pasien}
                         </h4>
-                        <p className="text-center text-slate-500 text-sm mb-4 font-mono">
+                        {pasien.nama_samaran && (
+                            <p className="text-center text-slate-700 text-sm font-medium mb-1">
+                                {pasien.nama_samaran}
+                            </p>
+                        )}
+                        <p className="text-center text-slate-500 text-sm mb-1 font-mono">
                             NOKA {pasien.noka}
+                        </p>
+                        <p className="text-center text-slate-500 text-sm mb-4 font-mono">
+                            Tanggal Aktif {formatTglHistori(pasien.tanggal_mulai_prb)}
                         </p>
 
                         <div className="flex justify-center items-center gap-2 mb-6">
@@ -265,9 +287,18 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                 <Activity className="w-4 h-4 text-slate-400 shrink-0" />
                                 <span>{pasien.fktp_asal}</span>
                             </div>
+                            <div className="flex items-center gap-3 text-slate-600">
+                                <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                                <span className={pasien.no_whatsapp ? 'font-mono' : 'text-slate-400'}>
+                                    {pasien.no_whatsapp ? formatNoWhatsapp(pasien.no_whatsapp) : 'No. WhatsApp belum diisi'}
+                                </span>
+                            </div>
                         </div>
 
                     </div>
+
+                    {/* key: isi pesan yang diubah tidak terbawa ke pasien lain */}
+                    <PengingatWhatsapp key={pasien.id} pasien={pasien} />
                 </div>
 
                 {/* Right Column: Tabs */}
@@ -278,7 +309,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                 onClick={() => setActiveTab('profil')}
                                 className={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'profil' ? 'border-teal-500 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                             >
-                                Info Klinis & Jadwal
+                                Info Pasien & Jadwal
                             </button>
                             <button
                                 onClick={() => setActiveTab('riwayat')}
@@ -353,6 +384,35 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                             )}
 
                                             <div>
+                                                <label htmlFor="ubah_nama" className="block text-xs font-medium text-slate-700 mb-1">Nama Pasien (Opsional)</label>
+                                                <input
+                                                    id="ubah_nama"
+                                                    type="text"
+                                                    value={formUbah.nama_samaran}
+                                                    onChange={e => setFormUbah({ ...formUbah, nama_samaran: e.target.value.slice(0, 150) })}
+                                                    placeholder="Contoh: Rizka Dwi Putri"
+                                                    className={inputClass}
+                                                />
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Disimpan tersamar{formUbah.nama_samaran.trim() ? <>: <span className="font-mono">{samarkanNama(formUbah.nama_samaran)}</span></> : '.'}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label htmlFor="ubah_wa" className="block text-xs font-medium text-slate-700 mb-1">No. WhatsApp (Opsional)</label>
+                                                <input
+                                                    id="ubah_wa"
+                                                    type="tel"
+                                                    inputMode="tel"
+                                                    value={formUbah.no_whatsapp}
+                                                    onChange={e => setFormUbah({ ...formUbah, no_whatsapp: e.target.value.replace(/[^\d\s+-]/g, '').slice(0, 20) })}
+                                                    placeholder="Contoh: 081234567890"
+                                                    className={`${inputClass} font-mono`}
+                                                />
+                                                <p className="text-xs text-slate-500 mt-1">Kosongkan untuk menghapus nomor.</p>
+                                            </div>
+
+                                            <div>
                                                 <label htmlFor="ubah_fktp" className="block text-xs font-medium text-slate-700 mb-1">FKTP Asal (Perujuk) *</label>
                                                 <input
                                                     id="ubah_fktp"
@@ -365,15 +425,16 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                             </div>
 
                                             <fieldset>
-                                                <legend className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB *</legend>
+                                                <legend className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB * <span className="font-normal text-slate-500">(satu diagnosis per data; diagnosis lain lewat Tambah)</span></legend>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {/* Pilihan baku + diagnosis yang sudah tersimpan (mis. dari import) agar tidak hilang */}
                                                     {[...new Set([...DIAGNOSIS_OPTIONS, ...daftarDiagnosis(pasien.diagnosis_prb)])].map(opt => (
                                                         <label key={opt} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                                                             <input
-                                                                type="checkbox"
-                                                                checked={formUbah.diagnosis_prb.includes(opt)}
-                                                                onChange={() => toggleDiagnosis(opt)}
+                                                                type="radio"
+                                                                name="ubah_diagnosis"
+                                                                checked={formUbah.diagnosis_prb.length === 1 && formUbah.diagnosis_prb[0] === opt}
+                                                                onChange={() => pilihDiagnosis(opt)}
                                                                 className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                                                             />
                                                             {opt}
@@ -402,11 +463,10 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                     <select
                                                         id="ubah_status"
                                                         value={formUbah.status}
-                                                        onChange={e => setFormUbah({ ...formUbah, status: e.target.value as 'Aktif' | 'Pasif' })}
+                                                        onChange={e => setFormUbah({ ...formUbah, status: e.target.value as StatusPasien })}
                                                         className={inputClass}
                                                     >
-                                                        <option value="Aktif">Aktif</option>
-                                                        <option value="Pasif">Pasif</option>
+                                                        {STATUS_PASIEN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                     </select>
                                                 </div>
                                             </div>
@@ -448,10 +508,6 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                         </form>
                                     ) : (
                                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
-                                        <div>
-                                            <dt className="text-xs font-medium text-slate-500">Mulai PRB</dt>
-                                            <dd className="mt-1 text-sm text-slate-900">{formatTglHistori(pasien.tanggal_mulai_prb)}</dd>
-                                        </div>
                                         <div>
                                             <dt className="text-xs font-medium text-slate-500">Jatah Obat</dt>
                                             <dd className="mt-1 text-sm text-slate-900">{pasien.jatah_obat} Hari</dd>
@@ -512,8 +568,8 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                 const selisihColor = isPatuh
                                                     ? 'text-emerald-600'
                                                     : selisih < 0
-                                                        ? 'text-amber-600'   // lebih awal (tidak patuh)
-                                                        : 'text-rose-600';   // terlambat (tidak patuh)
+                                                        ? 'text-amber-600'   // lebih awal (tidak teratur)
+                                                        : 'text-rose-600';   // terlambat (tidak teratur)
 
                                                 return (
                                             <div key={riwayat.id} className="relative pl-6">
@@ -588,7 +644,11 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                 ) : (
                                     <div className="text-center py-10">
                                         <History className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                                        <p className="text-slate-500">Belum ada riwayat pengambilan obat.</p>
+                                        <p className="text-slate-500">
+                                            {pasien.periode_penelitian
+                                                ? `Tidak ada pengambilan obat pada periode penelitian (${pasien.periode_penelitian}).`
+                                                : 'Belum ada riwayat pengambilan obat.'}
+                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -606,7 +666,11 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                             <label className="block text-xs font-medium text-slate-700 mb-1">Hasil Tindakan</label>
                                             <select
                                                 value={tindakan}
-                                                onChange={(e) => setTindakan(e.target.value)}
+                                                onChange={(e) => {
+                                                    setTindakan(e.target.value);
+                                                    // Kategori hanya untuk "Belum mengambil obat"
+                                                    if (e.target.value !== 'Belum mengambil obat') setKategori('');
+                                                }}
                                                 required
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
                                             >
@@ -614,6 +678,24 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                 {TINDAKAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                             </select>
                                         </div>
+
+                                        {tindakan === 'Belum mengambil obat' && (
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-700 mb-1">Kategori Tindak Lanjut</label>
+                                            <select
+                                                value={kategori}
+                                                onChange={(e) => setKategori(e.target.value)}
+                                                required
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
+                                            >
+                                                <option value="">Pilih kategori...</option>
+                                                {KATEGORI_TINDAK_LANJUT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </select>
+                                            {kategori === 'Meninggal' && pasien.status !== 'Meninggal' && (
+                                                <p className="text-xs text-rose-600 mt-1">Status pasien akan diubah menjadi Meninggal dan keluar dari pemantauan.</p>
+                                            )}
+                                        </div>
+                                        )}
 
                                         {tindakan === 'Sudah mengambil obat' && (
                                             <div>
@@ -660,9 +742,16 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                             <p className="font-semibold text-slate-800 text-sm">{tl.petugas}</p>
                                                             <span className="text-xs text-slate-500">{new Date(tl.tanggal_jam).toLocaleString('id-ID')}</span>
                                                         </div>
-                                                        <span className="inline-block bg-slate-100 text-slate-700 text-xs px-2 py-1 rounded font-medium mb-2">
-                                                            {tl.tindakan}
-                                                        </span>
+                                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                                            <span className="inline-block bg-slate-100 text-slate-700 text-xs px-2 py-1 rounded font-medium">
+                                                                {tl.tindakan}
+                                                            </span>
+                                                            {tl.kategori && (
+                                                                <span className="inline-block bg-teal-50 text-teal-700 border border-teal-100 text-xs px-2 py-1 rounded font-medium">
+                                                                    {tl.kategori}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         {tl.catatan && (
                                                             <p className="text-sm text-slate-600">{tl.catatan}</p>
                                                         )}
@@ -688,5 +777,89 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                 </div>
             </div>
         </Modal>
+    );
+}
+
+/**
+ * Kartu pengingat ambil obat lewat WhatsApp. Pesan awal mengikuti tahap Early
+ * Warning dari jadwal berikutnya dan bisa diubah petugas sebelum dikirim;
+ * tombol membuka WhatsApp, petugas menekan Kirim.
+ */
+function PengingatWhatsapp({ pasien }: { pasien: PasienPRB }) {
+    const jadwal = pasien.tanggal_jadwal_berikutnya;
+    const [lihatPesan, setLihatPesan] = useState(false);
+    const [pesanUbahan, setPesanUbahan] = useState<string | null>(null); // null = pakai pesan awal
+
+    let alasanTidakBisa: string | null = null;
+    if (pasien.status !== 'Aktif') alasanTidakBisa = `Pasien ${pasien.status} tidak perlu diingatkan.`;
+    else if (!jadwal) alasanTidakBisa = 'Pasien belum punya jadwal ambil obat.';
+    else if (!pasien.no_whatsapp) alasanTidakBisa = 'Isi No. WhatsApp lewat Ubah Data untuk mengirim pengingat.';
+
+    const pesanAwal = !alasanTidakBisa && jadwal ? pesanPengingat(jadwal, pasien.fktp_asal, new Date(), pasien.nama_samaran) : '';
+    const pesan = pesanUbahan ?? pesanAwal;
+    const tahap = jadwal ? LABEL_TAHAP[tahapPengingat(jadwal)] : null;
+
+    return (
+        <div className="mt-4 bg-emerald-50/60 p-4 rounded-xl border border-emerald-100">
+            <div className="flex items-center justify-between gap-2 mb-2">
+                <h5 className="text-sm font-semibold text-emerald-800 flex items-center gap-2">
+                    <Send className="w-4 h-4" />
+                    Pengingat WhatsApp
+                </h5>
+                {tahap && pasien.status === 'Aktif' && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-white border border-emerald-200 rounded-full px-2 py-0.5">
+                        {tahap}
+                    </span>
+                )}
+            </div>
+
+            {alasanTidakBisa ? (
+                <p className="text-xs text-slate-500">{alasanTidakBisa}</p>
+            ) : (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => window.open(tautanWhatsapp(pasien.no_whatsapp!, pesan), '_blank', 'noopener')}
+                        disabled={!pesan.trim()}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-3 py-2 transition-colors"
+                    >
+                        <Send className="w-4 h-4" />
+                        Kirim Pengingat WA
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setLihatPesan(v => !v)}
+                        className="mt-2 text-xs text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+                    >
+                        {lihatPesan ? 'Sembunyikan isi pesan' : 'Lihat / ubah isi pesan'}
+                    </button>
+                    {lihatPesan && (
+                        <div className="mt-2">
+                            <textarea
+                                value={pesan}
+                                onChange={(e) => setPesanUbahan(e.target.value)}
+                                rows={9}
+                                aria-label="Isi pesan pengingat WhatsApp"
+                                className="w-full text-xs text-slate-700 bg-white border border-emerald-200 rounded-lg p-3 focus:border-emerald-500 focus:ring-emerald-500"
+                            />
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                                <span className="text-[11px] text-slate-500">
+                                    {pesanUbahan !== null ? 'Pesan sudah diubah — yang dikirim pesan ini.' : 'Pesan bisa diubah sebelum dikirim.'}
+                                </span>
+                                {pesanUbahan !== null && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setPesanUbahan(null)}
+                                        className="text-[11px] text-emerald-700 hover:text-emerald-900 underline underline-offset-2 shrink-0"
+                                    >
+                                        Kembalikan pesan awal
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
     );
 }

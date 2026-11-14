@@ -5,7 +5,10 @@ Laravel 12 + Inertia/React, database SQLite.
 
 ## Instalasi di komputer baru
 
-Kebutuhan: PHP 8.2+, Composer, Node.js 20+.
+Kebutuhan: PHP 8.5+, Composer, Node.js 22+.
+
+Pastikan perintah `php` di terminal menunjuk ke PHP 8.5 (cek dengan `php -v`). Di Laragon: menu
+**PHP → Version → php-8.5.x**, lalu **Tools → Path → Add Laragon to Path** dan buka ulang terminal.
 
 ```bash
 git clone <url-repo> smart-prb
@@ -56,6 +59,15 @@ Setiap instalasi baru dimulai kosong; data diisi lewat **Data Pasien → Import*
 Jangan membagikan file database lewat repositori publik.
 
 Untuk data contoh (dummy) di lingkungan lokal: `php artisan db:seed` (diblokir di production).
+
+Untuk server demo (dibuka dosen/penguji): `php artisan db:seed --class=DemoDataSeeder --force` mengisi
+data fiktif Maret–Mei 2026 lewat proses import yang sama dengan file apotek. Hanya berjalan pada
+database yang masih kosong.
+
+## Hosting
+
+- **Hostinger Web Hosting** (shared, data sama seperti laptop): [docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md).
+- **VPS Ubuntu** (Nginx + PHP 8.5 + HTTPS, data demo): [docs/DEPLOY-VPS.md](docs/DEPLOY-VPS.md).
 
 ## Tes
 

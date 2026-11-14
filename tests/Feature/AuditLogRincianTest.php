@@ -51,14 +51,14 @@ class AuditLogRincianTest extends TestCase
         $this->put(route('pasien.update', $pasien), [
             'noka'              => 'PRB KPMA 001',
             'fktp_asal'         => 'Puskesmas B',
-            'diagnosis_prb'     => ['Hipertensi', 'Diabetes Melitus'],
+            'diagnosis_prb'     => ['Diabetes Melitus'], // satu data = satu diagnosis
             'tanggal_mulai_prb' => '2026-01-01',
             'status'            => 'Aktif',
         ])->assertSessionHasNoErrors();
 
         $rincian = $this->rincianTerakhir('ubah');
         $this->assertSame(['lama' => 'Puskesmas A', 'baru' => 'Puskesmas B'], array_intersect_key($rincian['FKTP'], ['lama' => 1, 'baru' => 1]));
-        $this->assertSame('Hipertensi, Diabetes Melitus', $rincian['Diagnosis']['baru']);
+        $this->assertSame('Diabetes Melitus', $rincian['Diagnosis']['baru']);
         $this->assertArrayNotHasKey('NOKA', $rincian, 'field yang tidak berubah tidak dicatat');
         $this->assertSame('Petugas Uji', AuditLog::where('aksi', 'ubah')->value('petugas'));
     }
@@ -78,11 +78,11 @@ class AuditLogRincianTest extends TestCase
     {
         $pasien = $this->pasien();
 
-        // Jadwal 20/09, ambil 30/09 → H+10 → Tidak Patuh
+        // Jadwal 20/09, ambil 30/09 → H+10 → Tidak Teratur
         $this->post(route('pasien.realisasi', $pasien), ['tanggal_realisasi' => '2026-09-30']);
         $rincian = $this->rincianTerakhir('catat_realisasi');
         $this->assertSame('30/09/2026', $rincian['Tanggal Pengambilan']['baru']);
-        $this->assertSame('Tidak Patuh', $rincian['Status Kepatuhan']['baru']);
+        $this->assertSame('Tidak Teratur', $rincian['Status Kepatuhan']['baru']);
         $this->assertSame('20/09/2026', $rincian['Jadwal Berikutnya']['lama']);
         $this->assertSame('30/10/2026', $rincian['Jadwal Berikutnya']['baru']);
 
@@ -93,7 +93,7 @@ class AuditLogRincianTest extends TestCase
         ]);
         $rincian = $this->rincianTerakhir('edit_realisasi');
         $this->assertSame(['30/09/2026', '21/09/2026'], [$rincian['Tanggal Pengambilan']['lama'], $rincian['Tanggal Pengambilan']['baru']]);
-        $this->assertSame(['Tidak Patuh', 'Patuh'], [$rincian['Status Kepatuhan']['lama'], $rincian['Status Kepatuhan']['baru']]);
+        $this->assertSame(['Tidak Teratur', 'Patuh'], [$rincian['Status Kepatuhan']['lama'], $rincian['Status Kepatuhan']['baru']]);
     }
 
     public function test_hapus_pasien_menyimpan_data_terakhirnya(): void
@@ -112,7 +112,7 @@ class AuditLogRincianTest extends TestCase
         $this->post(route('pasien.destroy-bulk'), ['ids' => [$pasien->id]]);
 
         $log = AuditLog::where('aksi', 'hapus_massal')->firstOrFail();
-        $this->assertSame('PRB-001 (NOKA PRB KPMA 001)', $log->perubahan[0]['lama']);
+        $this->assertSame('PRB-001 · Hipertensi (NOKA PRB KPMA 001)', $log->perubahan[0]['lama']);
     }
 
     public function test_rekaman_audit_tidak_dapat_diubah_atau_dihapus(): void

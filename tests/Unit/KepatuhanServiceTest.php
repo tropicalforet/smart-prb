@@ -22,7 +22,7 @@ class KepatuhanServiceTest extends TestCase
     /**
      * CONTOH 1:
      * Jadwal 18/09/2026, Evaluasi 22/09/2026 (H+4)
-     * Hasil: Early Warning = Overdue, Status = Tidak Patuh, Keterangan = "Terlambat 4 hari, melewati batas toleransi H+3"
+     * Hasil: Early Warning = Overdue, Status = Tidak Teratur, Keterangan = "Terlambat 4 hari, melewati batas toleransi H+3"
      */
     public function test_contoh_1_overdue_h_plus_4()
     {
@@ -34,8 +34,8 @@ class KepatuhanServiceTest extends TestCase
 
         $result = $this->service->tentukanStatusKepatuhan($pasien, '2026-09-22');
 
-        $this->assertEquals('Tidak Patuh', $result['status']);
-        $this->assertEquals('Tidak patuh/Overdue', $result['early_warning']);
+        $this->assertEquals('Tidak Teratur', $result['status']);
+        $this->assertEquals('Tidak teratur/Overdue', $result['early_warning']);
         $this->assertEquals(4, $result['selisih_hari']);
         $this->assertEquals('Terlambat 4 hari, melewati batas toleransi H+3', $result['keterangan']);
     }
@@ -154,8 +154,8 @@ class KepatuhanServiceTest extends TestCase
 
         $result = $this->service->tentukanStatusKepatuhan($pasien, '2026-09-22');
 
-        $this->assertEquals('Tidak Patuh', $result['status']);
-        $this->assertEquals('Tidak patuh/Overdue', $result['early_warning']);
+        $this->assertEquals('Tidak Teratur', $result['status']);
+        $this->assertEquals('Tidak teratur/Overdue', $result['early_warning']);
         $this->assertEquals(15, $result['selisih_hari']);
         $this->assertEquals('Terlambat 15 hari, melewati batas toleransi H+3', $result['keterangan']);
     }
@@ -201,7 +201,7 @@ class KepatuhanServiceTest extends TestCase
     }
 
     /**
-     * Realisasi terlalu awal (< H-3) = Tidak Patuh
+     * Realisasi terlalu awal (< H-3) = Tidak Teratur
      */
     public function test_realisasi_terlalu_awal()
     {
@@ -209,13 +209,13 @@ class KepatuhanServiceTest extends TestCase
 
         $result = $this->service->tentukanStatusKepatuhan($pasien, '2026-09-25');
 
-        $this->assertEquals('Tidak Patuh', $result['status']);
+        $this->assertEquals('Tidak Teratur', $result['status']);
         $this->assertEquals(-10, $result['selisih_hari']);
         $this->assertEquals('10 hari lebih awal, di luar batas toleransi H-3', $result['keterangan']);
     }
 
     /**
-     * Realisasi terlambat (> H+3) = Tidak Patuh
+     * Realisasi terlambat (> H+3) = Tidak Teratur
      */
     public function test_realisasi_terlambat()
     {
@@ -223,21 +223,21 @@ class KepatuhanServiceTest extends TestCase
 
         $result = $this->service->tentukanStatusKepatuhan($pasien, '2026-09-25');
 
-        $this->assertEquals('Tidak Patuh', $result['status']);
+        $this->assertEquals('Tidak Teratur', $result['status']);
         $this->assertEquals('Terlambat 5 hari, melewati batas toleransi H+3', $result['keterangan']);
     }
 
     /**
      * CONTOH FILTER:
      * Filter "Patuh" hanya menghasilkan pasien dengan status_kepatuhan = "Patuh".
-     * Pasien Tidak Patuh, Pasif, Belum Jatuh Tempo tidak boleh lolos filter.
+     * Pasien Tidak Teratur, Pasif, Belum Jatuh Tempo tidak boleh lolos filter.
      */
     public function test_filter_dalam_toleransi()
     {
         $evaluasi = '2026-09-22';
 
         $pasienA = $this->pasienDenganRealisasi('A', '2026-09-21', '2026-09-22'); // H+1 -> Patuh
-        $pasienB = new PasienPrb(['kode_pasien' => 'B', 'status' => 'Aktif', 'tanggal_jadwal_berikutnya' => '2026-09-18']); // H+4 -> Tidak Patuh
+        $pasienB = new PasienPrb(['kode_pasien' => 'B', 'status' => 'Aktif', 'tanggal_jadwal_berikutnya' => '2026-09-18']); // H+4 -> Tidak Teratur
         $pasienC = new PasienPrb(['kode_pasien' => 'C', 'status' => 'Pasif', 'alasan_pasif' => 'Meninggal Dunia']); // Pasif -> Pasif
         $pasienD = new PasienPrb(['kode_pasien' => 'D', 'status' => 'Aktif', 'tanggal_jadwal_berikutnya' => '2026-09-28']); // H-6 -> Belum Jatuh Tempo
 
@@ -268,7 +268,7 @@ class KepatuhanServiceTest extends TestCase
      * 1. Jadwal Target = 16/08/2026
      * 2. Realisasi = 24/09/2026
      * 3. Selisih Hari = 39 hari
-     * 4. Status Kepatuhan = "Tidak Patuh"
+     * 4. Status Kepatuhan = "Tidak Teratur"
      * 5. Record histori riwayat_pengambilan_obat tersimpan secara permanen
      * 6. Jadwal Berikutnya baru dihitung = 24/10/2026 (24/09/2026 + 30 hari)
      * 7. Histori transaksi lama tidak berubah setelah Jadwal Berikutnya diperbarui.
@@ -305,19 +305,19 @@ class KepatuhanServiceTest extends TestCase
         $this->assertEquals('2026-09-24', $riwayat->tanggal_pengambilan->toDateString());
         $this->assertEquals('2026-08-16', $riwayat->jadwal_target->toDateString());
         $this->assertEquals(39, $riwayat->selisih_hari);
-        $this->assertEquals('Tidak Patuh', $riwayat->status_kepatuhan);
+        $this->assertEquals('Tidak Teratur', $riwayat->status_kepatuhan);
 
-        // 5. Evaluasi 24/09/2026: Status = siklus terakhir selesai (Tidak Patuh),
+        // 5. Evaluasi 24/09/2026: Status = siklus terakhir selesai (Tidak Teratur),
         //    EWS = siklus aktif berikutnya (24/10/2026) yang belum tiba
         $kepatuhan = $this->service->tentukanStatusKepatuhan($pasienUpdated, '2026-09-24');
-        $this->assertEquals('Tidak Patuh', $kepatuhan['status']);
+        $this->assertEquals('Tidak Teratur', $kepatuhan['status']);
         $this->assertEquals('Belum memasuki jadwal', $kepatuhan['early_warning']);
 
         // 6. Pastikan histori transaksi 24/09/2026 tidak berubah meskipun pasien kemudian masuk ke siklus berikutnya
         $riwayatReloaded = $pasienUpdated->riwayatPengambilanObat()->first();
         $this->assertEquals('2026-08-16', $riwayatReloaded->jadwal_target->toDateString());
         $this->assertEquals(39, $riwayatReloaded->selisih_hari);
-        $this->assertEquals('Tidak Patuh', $riwayatReloaded->status_kepatuhan);
+        $this->assertEquals('Tidak Teratur', $riwayatReloaded->status_kepatuhan);
     }
 
     /**
@@ -389,11 +389,11 @@ class KepatuhanServiceTest extends TestCase
      * B. Jadwal 27/09 -> H-3 -> Dalam Toleransi jika belum realisasi
      * C. Jadwal 24/09 -> H -> Dalam Toleransi jika belum realisasi
      * D. Jadwal 21/09 -> H+3 -> Dalam Toleransi jika belum realisasi
-     * E. Jadwal 20/09 -> H+4 -> Tidak Patuh / Overdue
+     * E. Jadwal 20/09 -> H+4 -> Tidak Teratur / Overdue
      * F. Realisasi 27/09 untuk jadwal 30/09 -> Patuh (H-3)
      * G. Realisasi 24/09 untuk jadwal 24/09 -> Patuh (H)
      * H. Realisasi 21/09 untuk jadwal 18/09 -> H+3 -> Patuh
-     * I. Realisasi 24/09 untuk jadwal 19/09 -> H+5 -> Tidak Patuh
+     * I. Realisasi 24/09 untuk jadwal 19/09 -> H+5 -> Tidak Teratur
      */
     public function test_validasi_wajib_skenario_a_sampai_i()
     {
@@ -423,11 +423,11 @@ class KepatuhanServiceTest extends TestCase
         $this->assertEquals('Dalam Toleransi', $resD['status']);
         $this->assertEquals('Belum mengambil, masih toleransi', $resD['early_warning']);
 
-        // E. Jadwal 20/09 -> H+4 -> Tidak Patuh / Overdue
+        // E. Jadwal 20/09 -> H+4 -> Tidak Teratur / Overdue
         $pE = new PasienPrb(['status' => 'Aktif', 'tanggal_jadwal_berikutnya' => '2026-09-20']);
         $resE = $this->service->tentukanStatusKepatuhan($pE, $evaluasi);
-        $this->assertEquals('Tidak Patuh', $resE['status']);
-        $this->assertEquals('Tidak patuh/Overdue', $resE['early_warning']);
+        $this->assertEquals('Tidak Teratur', $resE['status']);
+        $this->assertEquals('Tidak teratur/Overdue', $resE['early_warning']);
 
         // F. Realisasi 27/09 untuk jadwal 30/09 -> Patuh (H-3)
         $pF = PasienPrb::create([
@@ -478,7 +478,7 @@ class KepatuhanServiceTest extends TestCase
         $riwayatH = $pHUpdated->riwayatPengambilanObat()->first();
         $this->assertEquals('Patuh', $riwayatH->status_kepatuhan);
 
-        // I. Realisasi 24/09 untuk jadwal 19/09 -> H+5 -> Tidak Patuh
+        // I. Realisasi 24/09 untuk jadwal 19/09 -> H+5 -> Tidak Teratur
         $pI = PasienPrb::create([
             'kode_pasien' => 'PRB-I',
             'noka' => '0001000000004',
@@ -492,7 +492,7 @@ class KepatuhanServiceTest extends TestCase
         ]);
         $pIUpdated = $this->service->prosesRealisasi($pI, '2026-09-24')['pasien'];
         $riwayatI = $pIUpdated->riwayatPengambilanObat()->first();
-        $this->assertEquals('Tidak Patuh', $riwayatI->status_kepatuhan);
+        $this->assertEquals('Tidak Teratur', $riwayatI->status_kepatuhan);
     }
 
     /**
@@ -503,7 +503,7 @@ class KepatuhanServiceTest extends TestCase
      */
     public function test_periode_memilih_riwayat_dengan_selisih_terkecil()
     {
-        $terlambat = ['tanggal_pengambilan' => '2026-09-25', 'jadwal_target' => '2026-09-20', 'selisih_hari' => 5, 'status_kepatuhan' => 'Tidak Patuh'];
+        $terlambat = ['tanggal_pengambilan' => '2026-09-25', 'jadwal_target' => '2026-09-20', 'selisih_hari' => 5, 'status_kepatuhan' => 'Tidak Teratur'];
         $tepat     = ['tanggal_pengambilan' => '2026-09-03', 'jadwal_target' => '2026-09-03', 'selisih_hari' => 0, 'status_kepatuhan' => 'Patuh'];
 
         // Hasil tidak boleh bergantung pada urutan riwayat di koleksi

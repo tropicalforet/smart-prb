@@ -44,6 +44,9 @@ class KepatuhanService
      */
     public const MAKS_SELISIH_VALID = 90;
 
+    /** Status yang sudah final dinilai — dipakai Rekap Kepatuhan & ekspornya. */
+    public const STATUS_DINILAI = ['Patuh', 'Tidak Teratur'];
+
     /**
      * Toleransi pengambilan obat (hari):
      * H-TOLERANSI_SEBELUM s/d H+TOLERANSI_SESUDAH dihitung Patuh.
@@ -65,24 +68,115 @@ class KepatuhanService
      * Oktober yang baru di-import November tetap dinilai dengan benar.
      * Tanpa pengambilan, acuan = hari ini.
      *
-     * Tanpa tanggal mulai PRB (data apotek lama) → dianggap Lama.
+     * Tanpa tanggal mulai PRB → Lama, KECUALI pasien yang pertama kali ambil
+     * obat di bulan terakhir periode penelitian (arahan pembimbing: data
+     * Maret–Mei, "yang baru ambil Mei dan tidak ada riwayat Maret/April
+     * dikatakan Baru"). Untuk pasien itu, pengambilan pertama = mulai PRB.
      *
      * Contoh: mulai 01/09/2026, ambil 01/10/2026 → Lama → jadwal 31/10/2026.
      *
-     * @param string|null $tanggalMulaiPrb  'Y-m-d'
-     * @param string|null $tanggalAcuan     tanggal pengambilan obat; null = hari ini
+     * @param string|null $tanggalMulaiPrb      'Y-m-d'
+     * @param string|null $tanggalAcuan         tanggal pengambilan obat; null = hari ini
+     * @param string|null $tanggalAmbilPertama  pengambilan pertama pasien (lihat tanggalAmbilPertama())
      * @return string  'Baru' atau 'Lama'
      */
-    public static function tentukanJenisPrb(?string $tanggalMulaiPrb, ?string $tanggalAcuan = null): string
-    {
+    public static function tentukanJenisPrb(
+        ?string $tanggalMulaiPrb,
+        ?string $tanggalAcuan = null,
+        ?string $tanggalAmbilPertama = null
+    ): string {
         if (empty($tanggalMulaiPrb)) {
-            return 'Lama';
+            $bulanBaru = self::bulanPrbBaruTanpaMulai();
+            if (!$bulanBaru || empty($tanggalAmbilPertama)
+                || Carbon::parse($tanggalAmbilPertama)->format('Y-m') !== $bulanBaru) {
+                return 'Lama';
+            }
+            $tanggalMulaiPrb = $tanggalAmbilPertama;
         }
 
         $bulanMulai = Carbon::parse($tanggalMulaiPrb)->format('Y-m');
         $bulanAcuan = Carbon::parse($tanggalAcuan ?: Carbon::today())->format('Y-m');
 
         return $bulanMulai < $bulanAcuan ? 'Lama' : 'Baru';
+    }
+
+    /** Bulan data penelitian (YYYY-MM, urut naik); kosong = semua bulan. */
+    public static function periodePenelitian(): array
+    {
+        $periode = array_values(array_filter((array) config('prb.periode_penelitian', [])));
+        sort($periode);
+
+        return $periode;
+    }
+
+    /**
+     * Tanggal evaluasi bawaan (Y-m-d): akhir periode penelitian, mis.
+     * 31/05/2026 — data penelitian berhenti di sana, jadi evaluasi "hari ini"
+     * membuat semua pasien tampak Overdue. Jika hari ini masih lebih awal,
+     * atau periode tidak dibatasi, pakai hari ini. Tetap bisa diganti manual.
+     */
+    public static function tanggalEvaluasiBawaan(): string
+    {
+        $hariIni = Carbon::today()->toDateString();
+        $periode = self::periodePenelitian();
+
+        if (!$periode) {
+            return $hariIni;
+        }
+
+        $akhirPenelitian = Carbon::parse(end($periode) . '-01')->endOfMonth()->toDateString();
+
+        return min($hariIni, $akhirPenelitian);
+    }
+
+    /** "Maret–Mei 2026" (null jika periode tidak dibatasi). */
+    public static function labelPeriodePenelitian(): ?string
+    {
+        $periode = self::periodePenelitian();
+        if (!$periode) {
+            return null;
+        }
+
+        $awal  = Carbon::parse(reset($periode) . '-01');
+        $akhir = Carbon::parse(end($periode) . '-01');
+
+        return $awal->year === $akhir->year
+            ? $awal->translatedFormat('F') . '–' . $akhir->translatedFormat('F Y')
+            : $awal->translatedFormat('F Y') . '–' . $akhir->translatedFormat('F Y');
+    }
+
+    /** Apakah tanggal (Y-m-d...) jatuh di periode penelitian (selalu true jika tidak dibatasi). */
+    public static function dalamPeriodePenelitian(?string $tanggal): bool
+    {
+        $periode = self::periodePenelitian();
+
+        return empty($periode) || ($tanggal !== null && in_array(substr($tanggal, 0, 7), $periode, true));
+    }
+
+    /** Bulan terakhir penelitian — pasien tanpa mulai PRB yang pertama ambil di bulan ini = Baru. */
+    private static function bulanPrbBaruTanpaMulai(): ?string
+    {
+        $periode = self::periodePenelitian();
+
+        return $periode ? end($periode) : null;
+    }
+
+    /**
+     * Tanggal pengambilan pertama pasien: yang paling awal antara riwayat
+     * tersimpan dan $kandidat (pengambilan yang sedang dicatat).
+     */
+    public static function tanggalAmbilPertama(?PasienPrb $pasien, ?string $kandidat = null): ?string
+    {
+        $tersimpan = $pasien?->exists
+            ? $pasien->riwayatPengambilanObat()->whereNotNull('tanggal_pengambilan')->min('tanggal_pengambilan')
+            : null;
+
+        $semua = array_filter([
+            $tersimpan ? substr((string) $tersimpan, 0, 10) : null,
+            $kandidat ? Carbon::parse($kandidat)->toDateString() : null,
+        ]);
+
+        return $semua ? min($semua) : null;
     }
 
     /**
@@ -144,6 +238,18 @@ class KepatuhanService
      */
     public function daftarPeriode(): array
     {
+        // Periode penelitian ditetapkan → hanya bulan-bulan itu (terbaru dulu)
+        if ($penelitian = self::periodePenelitian()) {
+            return collect($penelitian)
+                ->sortDesc()
+                ->map(fn ($p) => [
+                    'value' => $p,
+                    'label' => Carbon::parse($p . '-01')->translatedFormat('F Y'),
+                ])
+                ->values()
+                ->toArray();
+        }
+
         $dariRiwayat = RiwayatPengambilanObat::query()
             ->whereNotNull('jadwal_target')
             ->distinct()
@@ -169,13 +275,23 @@ class KepatuhanService
     }
 
     /**
-     * Persentase kepatuhan = Patuh / (Patuh + Tidak Patuh) × 100.
+     * Persentase kepatuhan = Patuh / (Patuh + Tidak Teratur) × 100.
      *
      * Hanya pasien yang sudah dapat dinilai yang masuk penyebut —
      * Dalam Toleransi, Belum Jatuh Tempo, Pasif, dan Tidak Ada Transaksi
      * belum/tidak dinilai. Mengembalikan null bila belum ada yang dinilai.
      * Dipakai Dashboard dan Rekap Kepatuhan agar angkanya selalu sama.
      */
+    /** Keterangan untuk pasien yang tidak lagi dipantau (Pasif / Meninggal). */
+    private static function keteranganNonAktif(PasienPrb $pasien): string
+    {
+        if ($pasien->status === 'Meninggal') {
+            return 'Pasien meninggal dunia';
+        }
+
+        return $pasien->alasan_pasif ?? 'Dikeluarkan dari pemantauan aktif';
+    }
+
     public static function persentasePatuh(int $patuh, int $tidakPatuh): ?float
     {
         $dinilai = $patuh + $tidakPatuh;
@@ -236,7 +352,7 @@ class KepatuhanService
      *   −3..−1 → Jadwal mendekat
      *   0      → Jatuh tempo
      *   1..3   → Belum mengambil, masih toleransi
-     *   ≥ 4    → Tidak patuh/Overdue
+     *   ≥ 4    → Tidak teratur/Overdue
      *
      * ── B. STATUS dari riwayat terbaru ──
      *   Ada riwayat → status = status_kepatuhan riwayat terbaru
@@ -244,24 +360,22 @@ class KepatuhanService
      *
      * Kombinasi VALID:
      *   EWS=Belum memasuki jadwal + Status=Patuh     → riwayat Patuh + jadwal belum tiba
-     *   EWS=Belum memasuki jadwal + Status=Tidak Patuh → riwayat Tidak Patuh + jadwal belum tiba
+     *   EWS=Belum memasuki jadwal + Status=Tidak Teratur → riwayat Tidak Teratur + jadwal belum tiba
      *   EWS=Jatuh tempo           + Status=Patuh     → riwayat Patuh + hari ini = jadwal aktif
      */
     public function tentukanStatusKepatuhan(
         PasienPrb $pasien,
         ?string $tanggalEvaluasi = null
     ): array {
-        $evaluasi = $tanggalEvaluasi
-            ? Carbon::parse($tanggalEvaluasi)->startOfDay()
-            : Carbon::today()->startOfDay();
+        $evaluasi = Carbon::parse($tanggalEvaluasi ?: self::tanggalEvaluasiBawaan())->startOfDay();
 
-        // ── Pasif ─────────────────────────────────────────────────────────
-        if ($pasien->status === 'Pasif') {
+        // ── Pasif / Meninggal: keluar dari pemantauan ─────────────────────
+        if ($pasien->status !== 'Aktif') {
             return [
-                'status'                  => 'Pasif',
-                'early_warning'           => 'Pasif',
+                'status'                  => $pasien->status,
+                'early_warning'           => $pasien->status,
                 'selisih_hari'            => 0,
-                'keterangan'              => $pasien->alasan_pasif ?? 'Dikeluarkan dari pemantauan aktif',
+                'keterangan'              => self::keteranganNonAktif($pasien),
                 'tindakan'                => '-',
                 'jadwal_target_aktif'     => null,
                 'tanggal_realisasi_aktif' => null,
@@ -273,12 +387,12 @@ class KepatuhanService
         //
         // Jika tanggal evaluasi jatuh di bulan sebelum pasien resmi terdaftar
         // di program PRB, pasien ini belum memiliki kewajiban pengambilan obat
-        // pada periode tersebut. Sistem TIDAK boleh melabelinya "Tidak Patuh".
+        // pada periode tersebut. Sistem TIDAK boleh melabelinya "Tidak Teratur".
         //
         // Contoh kasus:
         //   - Pasien daftar September 2026.
         //   - Dashboard dievaluasi untuk Agustus 2026.
-        //   - Pasien dikecualikan → "Tidak Ada Transaksi", bukan "Tidak Patuh".
+        //   - Pasien dikecualikan → "Tidak Ada Transaksi", bukan "Tidak Teratur".
         //
         // Mode "Semua Periode" (tanpa filter periode spesifik) menggunakan
         // tanggal evaluasi yang dikirim oleh controller (biasanya hari ini).
@@ -344,7 +458,7 @@ class KepatuhanService
                 $keteranganEws = 'Belum mengambil obat, masih dalam batas toleransi sampai H+3';
             } else {
                 // H+4 ke atas
-                $earlyWarning  = 'Tidak patuh/Overdue';
+                $earlyWarning  = 'Tidak teratur/Overdue';
                 $keteranganEws = 'Terlambat ' . $selisihEws . ' hari, melewati batas toleransi H+3';
             }
         }
@@ -356,7 +470,7 @@ class KepatuhanService
                 ?? (int) Carbon::parse($riwayatTerbaru->jadwal_target)
                                ->startOfDay()
                                ->diffInDays($tglRealisasi, false);
-            $statusHistoris  = $riwayatTerbaru->status_kepatuhan ?? 'Tidak Patuh';
+            $statusHistoris  = $riwayatTerbaru->status_kepatuhan ?? 'Tidak Teratur';
 
             $keteranganHistoris = match(true) {
                 $statusHistoris === 'Patuh'
@@ -402,12 +516,12 @@ class KepatuhanService
             $earlyWarning === 'Jatuh tempo'
             || $earlyWarning === 'Belum mengambil, masih toleransi'
                 => 'Dalam Toleransi',
-            default   // Tidak patuh/Overdue
-                => 'Tidak Patuh',
+            default   // Tidak teratur/Overdue
+                => 'Tidak Teratur',
         };
 
         $tindakanTanpaRiwayat = match($earlyWarning) {
-            'Tidak patuh/Overdue'                  => 'Segera laporkan ke FKTP',
+            'Tidak teratur/Overdue'                  => 'Segera laporkan ke FKTP',
             'Jatuh tempo',
             'Belum mengambil, masih toleransi'     => 'Hubungi pasien segera',
             'Jadwal mendekat'                       => 'Kirim reminder ke pasien',
@@ -441,7 +555,7 @@ class KepatuhanService
      *   pengambilan 03/03/2026, jadwal_target 02/04/2026
      *   → Ini adalah transaksi siklus APRIL (jadwal_target = April)
      *   → Selisih = -30 hari (lebih awal)
-     *   → Status = Tidak Patuh
+     *   → Status = Tidak Teratur
      *   → Tetap menjadi transaksi historis siklus April
      *
      * KEDATANGAN PASIEN (tanggal_realisasi_aktif):
@@ -476,16 +590,14 @@ class KepatuhanService
         string $periode, // format YYYY-MM
         ?string $tanggalEvaluasi = null
     ): array {
-        $evaluasi = $tanggalEvaluasi
-            ? Carbon::parse($tanggalEvaluasi)->startOfDay()
-            : Carbon::today()->startOfDay();
+        $evaluasi = Carbon::parse($tanggalEvaluasi ?: self::tanggalEvaluasiBawaan())->startOfDay();
 
-        if ($pasien->status === 'Pasif') {
+        if ($pasien->status !== 'Aktif') {
             return [
-                'status'                  => 'Pasif',
-                'early_warning'           => 'Pasif',
+                'status'                  => $pasien->status,
+                'early_warning'           => $pasien->status,
                 'selisih_hari'            => 0,
-                'keterangan'              => $pasien->alasan_pasif ?? 'Dikeluarkan dari pemantauan aktif',
+                'keterangan'              => self::keteranganNonAktif($pasien),
                 'tindakan'                => '-',
                 'jadwal_target_aktif'     => null,
                 'tanggal_realisasi_aktif' => null,
@@ -505,7 +617,7 @@ class KepatuhanService
         //
         // Contoh kasus (Maret–Mei):
         //   - Pasien baru daftar Mei 2026 (jadwal pertama = Mei).
-        //   - Periode Maret & April → "Tidak Ada Transaksi" (bukan "Tidak Patuh").
+        //   - Periode Maret & April → "Tidak Ada Transaksi" (bukan "Tidak Teratur").
         //   - Periode Mei → evaluasi normal.
         //
         // Kita pass Carbon dari awal bulan periode (bukan $evaluasi hari ini)
@@ -537,7 +649,7 @@ class KepatuhanService
         //   logis untuk siklus ini.
         //
         // PENTING: Selisih ekstrem (mis. 698 hari) BUKAN berarti data rogue.
-        //   Itu berarti pasien sangat telat untuk siklus ini → status Tidak Patuh.
+        //   Itu berarti pasien sangat telat untuk siklus ini → status Tidak Teratur.
         //   Jangan buang riwayat hanya karena selisihnya besar.
         //   MAKS_SELISIH_VALID hanya digunakan di mode Semua Periode untuk
         //   menyaring data anomali tanpa konteks siklus spesifik.
@@ -576,7 +688,7 @@ class KepatuhanService
             $jadwalRiwayat = Carbon::parse($riwayatSiklus->jadwal_target)->startOfDay();
 
             $selisihHari = $riwayatSiklus->selisih_hari ?? (int) $jadwalRiwayat->diffInDays($tglAmbil, false);
-            $statusKepatuhan = $riwayatSiklus->status_kepatuhan ?? 'Tidak Patuh';
+            $statusKepatuhan = $riwayatSiklus->status_kepatuhan ?? 'Tidak Teratur';
 
             // Tentukan Early Warning berdasarkan status dan selisih historis
             if ($statusKepatuhan === 'Patuh') {
@@ -584,8 +696,8 @@ class KepatuhanService
                 $keterangan   = 'Pengambilan obat telah direalisasikan.';
                 $tindakan     = 'Tidak perlu tindak lanjut';
             } else {
-                // Tidak patuh — bisa terlambat atau terlalu awal
-                $earlyWarning = 'Tidak patuh/Overdue';
+                // Tidak teratur — bisa terlambat atau terlalu awal
+                $earlyWarning = 'Tidak teratur/Overdue';
                 $keterangan   = $selisihHari < 0
                     ? abs($selisihHari) . ' hari lebih awal, di luar batas toleransi H-3'
                     : 'Terlambat ' . $selisihHari . ' hari, melewati batas toleransi H+3';
@@ -655,8 +767,8 @@ class KepatuhanService
                     : 'Terlambat ' . $selisihRealisasi . ' hari, melewati batas toleransi H+3';
 
                 return [
-                    'status'                  => 'Tidak Patuh',
-                    'early_warning'           => 'Tidak patuh/Overdue',
+                    'status'                  => 'Tidak Teratur',
+                    'early_warning'           => 'Tidak teratur/Overdue',
                     'selisih_hari'            => $selisihRealisasi,
                     'keterangan'              => $keterangan,
                     'tindakan'                => 'Segera dilaporkan kepada FKTP untuk ditindaklanjuti',
@@ -718,10 +830,10 @@ class KepatuhanService
             }
 
             // H+4 dst — melewati toleransi, belum ada realisasi
-            // Ini sudah pasti Tidak Patuh karena periode sudah lewat dan tidak ada pengambilan.
+            // Ini sudah pasti Tidak Teratur karena periode sudah lewat dan tidak ada pengambilan.
             return [
-                'status'                  => 'Tidak Patuh',
-                'early_warning'           => 'Tidak patuh/Overdue',
+                'status'                  => 'Tidak Teratur',
+                'early_warning'           => 'Tidak teratur/Overdue',
                 'selisih_hari'            => $selisih,
                 'keterangan'              => 'Terlambat ' . $selisih . ' hari, melewati batas toleransi H+3',
                 'tindakan'                => 'Segera dilaporkan kepada FKTP untuk ditindaklanjuti',
@@ -780,7 +892,7 @@ class KepatuhanService
      *   positif = terlambat, negatif = lebih awal, nol = tepat waktu
      *
      * ATURAN status_kepatuhan:
-     *   H-3 s.d. H+3 = Patuh, di luar itu = Tidak Patuh
+     *   H-3 s.d. H+3 = Patuh, di luar itu = Tidak Teratur
      *
      * @return array{duplikat: bool, pasien?: PasienPrb}
      */
@@ -854,7 +966,7 @@ class KepatuhanService
 
             $statusKepatuhan = $realisasi->between($batasAwal, $batasAkhir, true)
                 ? 'Patuh'
-                : 'Tidak Patuh';
+                : 'Tidak Teratur';
         }
 
         // ------------------------------------------------------------------
@@ -886,7 +998,8 @@ class KepatuhanService
             // Jenis PRB dari bulan mulai PRB vs bulan realisasi.
             $jenisPrbBaru  = self::tentukanJenisPrb(
                 $pasien->tanggal_mulai_prb?->toDateString(),
-                $realisasi->toDateString()
+                $realisasi->toDateString(),
+                self::tanggalAmbilPertama($pasien, $realisasi->toDateString())
             );
             $jatahObatBaru = $jenisPrbBaru === 'Baru' ? self::JATAH_PRB_BARU : self::JATAH_PRB_LAMA;
             $jadwalBaru    = $this->hitungJadwalBerikutnya($realisasi, $jatahObatBaru);
@@ -981,7 +1094,7 @@ class KepatuhanService
         $batasAkhir = $jadwalTarget->copy()->addDays(self::TOLERANSI_SESUDAH);
         $statusBaru = $tanggalBaru->between($batasAwal, $batasAkhir, true)
             ? 'Patuh'
-            : 'Tidak Patuh';
+            : 'Tidak Teratur';
 
         DB::transaction(function () use (
             $pasien, $riwayat, $tanggalBaru, $selisihBaru, $statusBaru
@@ -1005,7 +1118,8 @@ class KepatuhanService
                 // Jenis PRB dari bulan mulai PRB vs bulan tanggal baru.
                 $jenisPrbEdit  = self::tentukanJenisPrb(
                     $pasien->tanggal_mulai_prb?->toDateString(),
-                    $tanggalBaru->toDateString()
+                    $tanggalBaru->toDateString(),
+                    self::tanggalAmbilPertama($pasien, $tanggalBaru->toDateString())
                 );
                 $jatahObatEdit = $jenisPrbEdit === 'Baru' ? self::JATAH_PRB_BARU : self::JATAH_PRB_LAMA;
                 $jadwalBaru    = $this->hitungJadwalBerikutnya($tanggalBaru, $jatahObatEdit);
@@ -1043,7 +1157,7 @@ class KepatuhanService
         ?string $filterFktp = null,
         ?string $filterPeriode = null
     ): array {
-        $evaluasi = $tanggalEvaluasi ?: Carbon::today()->toDateString();
+        $evaluasi = $tanggalEvaluasi ?: self::tanggalEvaluasiBawaan();
 
         $query = PasienPrb::with([
             'riwayatPengambilanObat' => fn($q) => $q->orderBy('tanggal_pengambilan', 'desc'),
@@ -1092,7 +1206,7 @@ class KepatuhanService
 
             switch ($status) {
                 case 'Patuh':             $patuh++;           break;
-                case 'Tidak Patuh':       $tidakPatuh++;      break;
+                case 'Tidak Teratur':       $tidakPatuh++;      break;
                 case 'Dalam Toleransi':     $dalamToleransi++;  break;
                 case 'Belum Jatuh Tempo': $belumJatuhTempo++; break;
             }
@@ -1113,7 +1227,7 @@ class KepatuhanService
                     $diagMap[$diag] = ['patuh' => 0, 'tidak_patuh' => 0];
                 }
                 if ($entry['status'] === 'Patuh')       $diagMap[$diag]['patuh']++;
-                if ($entry['status'] === 'Tidak Patuh') $diagMap[$diag]['tidak_patuh']++;
+                if ($entry['status'] === 'Tidak Teratur') $diagMap[$diag]['tidak_patuh']++;
             }
         }
 
@@ -1141,7 +1255,7 @@ class KepatuhanService
                 $fktpMap[$fktp] = ['patuh' => 0, 'tidak_patuh' => 0];
             }
             if ($entry['status'] === 'Patuh')       $fktpMap[$fktp]['patuh']++;
-            if ($entry['status'] === 'Tidak Patuh') $fktpMap[$fktp]['tidak_patuh']++;
+            if ($entry['status'] === 'Tidak Teratur') $fktpMap[$fktp]['tidak_patuh']++;
         }
 
         $perFktp = [];
@@ -1164,6 +1278,7 @@ class KepatuhanService
             'total_pasien'      => $totalPasien,
             'total_aktif'       => $totalAktif,
             'total_pasif'       => $pasienPasif->count(),
+            'total_meninggal'   => $semuaPasien->where('status', 'Meninggal')->count(),
             'patuh'             => $patuh,
             'tidak_patuh'       => $tidakPatuh,
             'dalam_toleransi'   => $dalamToleransi,
@@ -1185,7 +1300,7 @@ class KepatuhanService
      * angka tren bulan X selalu sama dengan KPI periode X.
      *
      * Satu pasien = satu siklus per bulan (bukan satu baris riwayat), dan
-     * pasien yang jadwalnya terlewat tanpa riwayat ikut dihitung Tidak Patuh.
+     * pasien yang jadwalnya terlewat tanpa riwayat ikut dihitung Tidak Teratur.
      * Bulan tanpa pasien yang dinilai → persentase null (garis putus,
      * bukan jatuh ke 0%).
      *
@@ -1196,7 +1311,7 @@ class KepatuhanService
         ?string $filterFktp = null,
         int $jumlahBulan = 12
     ): array {
-        $evaluasi = $tanggalEvaluasi ?: Carbon::today()->toDateString();
+        $evaluasi = $tanggalEvaluasi ?: self::tanggalEvaluasiBawaan();
         $akhir    = Carbon::parse($evaluasi)->startOfMonth();
 
         $query = PasienPrb::aktif()->with('riwayatPengambilanObat');
@@ -1205,7 +1320,7 @@ class KepatuhanService
         }
         $pasienAktif = $query->get();
 
-        // Pasien hanya bisa Patuh/Tidak Patuh di bulan yang punya siklus:
+        // Pasien hanya bisa Patuh/Tidak Teratur di bulan yang punya siklus:
         // jadwal_target riwayat (yang ada tanggal ambilnya) atau jadwal aktif
         // master — sama dengan langkah 1 & 2 tentukanStatusKepatuhanPeriode().
         // Bulan lain pasti "Tidak Ada Transaksi", jadi tidak perlu dievaluasi.
@@ -1227,17 +1342,20 @@ class KepatuhanService
             }
         }
 
+        // Periode penelitian ditetapkan → tren hanya bulan-bulan itu
+        $daftarBulan = self::periodePenelitian()
+            ?: array_map(fn ($i) => $akhir->copy()->subMonths($i)->format('Y-m'), range($jumlahBulan - 1, 0));
+
         $tren = [];
-        for ($i = $jumlahBulan - 1; $i >= 0; $i--) {
-            $bulan   = $akhir->copy()->subMonths($i);
-            $periode = $bulan->format('Y-m');
+        foreach ($daftarBulan as $periode) {
+            $bulan = Carbon::parse($periode . '-01');
 
             $patuh = 0;
             $tidakPatuh = 0;
             foreach ($pasienPerBulan[$periode] ?? [] as $pasien) {
                 $status = $this->tentukanStatusKepatuhanPeriode($pasien, $periode, $evaluasi)['status'];
                 if ($status === 'Patuh')       $patuh++;
-                if ($status === 'Tidak Patuh') $tidakPatuh++;
+                if ($status === 'Tidak Teratur') $tidakPatuh++;
             }
 
             $tren[] = [

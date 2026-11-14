@@ -24,9 +24,16 @@ class TindakLanjutController extends Controller
         $validated = $request->validate([
             'petugas'           => 'nullable|string|max:255',
             'tindakan'          => ['required', Rule::in(RiwayatTindakLanjut::TINDAKAN_OPTIONS)],
+            // Kategori hanya untuk pasien yang belum mengambil obat
+            'kategori'          => ['nullable', 'required_if:tindakan,Belum mengambil obat', Rule::in(RiwayatTindakLanjut::KATEGORI_OPTIONS)],
             'catatan'           => 'nullable|string',
             'tanggal_realisasi' => 'nullable|required_if:tindakan,Sudah mengambil obat|date|before_or_equal:today',
         ]);
+
+        // Sudah mengambil obat → tidak ada kategori tindak lanjut
+        if ($validated['tindakan'] !== 'Belum mengambil obat') {
+            $validated['kategori'] = null;
+        }
 
         // Resolusi nama petugas: auth user → input form → fallback
         if (auth()->check() && !empty(auth()->user()->name)) {
@@ -57,6 +64,7 @@ class TindakLanjutController extends Controller
             'tanggal_jam'               => now(),
             'petugas'                   => $namaPetugas,
             'tindakan'                  => $validated['tindakan'],
+            'kategori'                  => $validated['kategori'],
             'catatan'                   => $validated['catatan'] ?? null,
             'update_realisasi_otomatis' => $updateRealisasi,
         ]);
@@ -76,10 +84,24 @@ class TindakLanjutController extends Controller
             $pasien->id, $label, $validated['tindakan'],
             array_values(array_filter([
                 ['kolom' => 'Tindakan', 'lama' => null, 'baru' => $validated['tindakan']],
+                ['kolom' => 'Kategori', 'lama' => null, 'baru' => $validated['kategori']],
                 ['kolom' => 'Catatan',  'lama' => null, 'baru' => $validated['catatan'] ?? null],
                 ['kolom' => 'Petugas',  'lama' => null, 'baru' => $namaPetugas],
             ], fn ($p) => $p['baru'] !== null && $p['baru'] !== ''))
         );
+
+        // Kategori "Meninggal" → pasien keluar dari pemantauan dengan status Meninggal
+        if ($validated['kategori'] === 'Meninggal' && $pasien->status !== 'Meninggal') {
+            $sebelumStatus = AuditLogService::snapshotPasien($pasien->fresh());
+            $pasien->update(['status' => 'Meninggal', 'alasan_pasif' => null]);
+
+            $this->auditLogService->ubahStatusPasien(
+                $pasien->id, $label, 'Meninggal',
+                AuditLogService::selisih($sebelumStatus, AuditLogService::snapshotPasien($pasien->fresh()))
+            );
+
+            return redirect()->back()->with('success', 'Tindak lanjut berhasil dicatat. Status pasien diubah menjadi Meninggal.');
+        }
 
         if ($realisasiDuplikat) {
             return redirect()

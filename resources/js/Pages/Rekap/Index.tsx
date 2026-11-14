@@ -6,9 +6,7 @@ import {
     Users,
     CheckCircle2,
     AlertTriangle,
-    Clock,
     Download,
-    CalendarDays,
     Percent,
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
@@ -17,9 +15,7 @@ interface RekapData {
     fktp: string;
     total: number;
     patuh: number;
-    dalam_toleransi: number;
     tidak_patuh: number;
-    belum_jatuh_tempo: number;
     persentase_patuh: number | null;
 }
 
@@ -27,9 +23,7 @@ interface Props {
     summary: {
         total: number;
         patuh: number;
-        dalam_toleransi: number;
         tidak_patuh: number;
-        belum_jatuh_tempo: number;
         persentase_patuh: number | null;
     };
     rekapFktp: RekapData[];
@@ -43,7 +37,7 @@ interface Props {
     periodeOptions: { value: string; label: string }[];
 }
 
-/** Persentase kepatuhan = Patuh / (Patuh + Tidak Patuh); '-' bila belum ada yang dinilai. */
+/** Persentase kepatuhan = Patuh / (Patuh + Tidak Teratur); '-' bila belum ada yang dinilai. */
 const formatPersen = (p: number | null) => (p === null ? '-' : `${p}%`);
 
 export default function RekapIndex({
@@ -100,22 +94,10 @@ export default function RekapIndex({
             gradient: 'from-emerald-500 to-emerald-600',
         },
         {
-            title: 'Dalam Toleransi',
-            value: summary.dalam_toleransi,
-            icon: Clock,
-            gradient: 'from-amber-500 to-amber-600',
-        },
-        {
-            title: 'Tidak Patuh',
+            title: 'Tidak Teratur',
             value: summary.tidak_patuh,
             icon: AlertTriangle,
             gradient: 'from-rose-500 to-rose-600',
-        },
-        {
-            title: 'Blm Jatuh Tempo',
-            value: summary.belum_jatuh_tempo,
-            icon: CalendarDays,
-            gradient: 'from-blue-400 to-blue-500',
         },
     ];
 
@@ -167,11 +149,9 @@ export default function RekapIndex({
                         className="text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer h-[42px]"
                     >
                         <option value="">Semua Kepatuhan</option>
-                        <option value="Patuh">Patuh</option>
                         {/* value harus cocok dengan string status yang dikembalikan KepatuhanService */}
-                        <option value="Dalam Toleransi">Dalam Toleransi</option>
-                        <option value="Tidak Patuh">Tidak Patuh</option>
-                        <option value="Belum Jatuh Tempo">Belum Jatuh Tempo</option>
+                        <option value="Patuh">Patuh</option>
+                        <option value="Tidak Teratur">Tidak Teratur</option>
                     </select>
 
                     <Button onClick={handleExport} variant="outline" className="h-[42px]">
@@ -182,7 +162,7 @@ export default function RekapIndex({
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {summaryCards.map((card, idx) => (
                     <motion.div
                         key={card.title}
@@ -210,9 +190,7 @@ export default function RekapIndex({
                                 <th className="px-6 py-4 whitespace-nowrap">FKTP</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right">Total Pasien</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-emerald-600">Patuh</th>
-                                <th className="px-6 py-4 whitespace-nowrap text-right text-amber-600">Dlm Toleransi</th>
-                                <th className="px-6 py-4 whitespace-nowrap text-right text-rose-600">Tidak Patuh</th>
-                                <th className="px-6 py-4 whitespace-nowrap text-right text-blue-500">Blm Jatuh Tempo</th>
+                                <th className="px-6 py-4 whitespace-nowrap text-right text-rose-600">Tidak Teratur</th>
                                 <th className="px-6 py-4 whitespace-nowrap text-right text-teal-600">% Kepatuhan</th>
                             </tr>
                         </thead>
@@ -222,9 +200,7 @@ export default function RekapIndex({
                                     <td className="px-6 py-4 font-medium text-slate-800 whitespace-nowrap">{row.fktp}</td>
                                     <td className="px-6 py-4 text-right font-medium text-slate-700">{row.total}</td>
                                     <td className="px-6 py-4 text-right text-emerald-600 font-medium">{row.patuh}</td>
-                                    <td className="px-6 py-4 text-right text-amber-600 font-medium">{row.dalam_toleransi}</td>
                                     <td className="px-6 py-4 text-right text-rose-600 font-medium">{row.tidak_patuh}</td>
-                                    <td className="px-6 py-4 text-right text-blue-500 font-medium">{row.belum_jatuh_tempo ?? 0}</td>
                                     <td className="px-6 py-4 text-right whitespace-nowrap">
                                         <div className="flex items-center justify-end gap-2">
                                             {row.persentase_patuh !== null && (
@@ -239,7 +215,7 @@ export default function RekapIndex({
                             ))}
                             {rekapFktp.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                                         Tidak ada data rekap yang ditemukan.
                                     </td>
                                 </tr>
@@ -248,11 +224,6 @@ export default function RekapIndex({
                     </table>
                 </div>
             </div>
-
-            <p className="text-xs text-slate-500 mt-3">
-                % Kepatuhan = Patuh ÷ (Patuh + Tidak Patuh). Pasien Dalam Toleransi dan Belum Jatuh Tempo belum dinilai
-                sehingga tidak masuk perhitungan. Rekap hanya mencakup pasien Aktif.
-            </p>
         </AppLayout>
     );
 }

@@ -18,8 +18,8 @@ class RecalculateSelisihHistori extends Command
      *
      * - status_kepatuhan:
      *   H-3 s.d. H+3 → Patuh
-     *   lebih awal dari H-3 → Tidak Patuh
-     *   lebih lambat dari H+3 → Tidak Patuh
+     *   lebih awal dari H-3 → Tidak Teratur
+     *   lebih lambat dari H+3 → Tidak Teratur
      *
      * CATATAN: Tidak mengubah jadwal_target. Hanya memperbaiki selisih_hari dan status_kepatuhan.
      */
@@ -54,7 +54,7 @@ class RecalculateSelisihHistori extends Command
             $batasAkhir = $jadwal->copy()->addDays(self::TOLERANSI);
             $status     = $tglAmbil->between($batasAwal, $batasAkhir, true)
                 ? 'Patuh'
-                : 'Tidak Patuh';
+                : 'Tidak Teratur';
 
             $selisihLama = $r->selisih_hari;
             $statusLama  = $r->status_kepatuhan;

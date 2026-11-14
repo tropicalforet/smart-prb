@@ -6,6 +6,7 @@ import {
     Filters,
     DiagnosisPRB,
     StatusKepatuhan,
+    KATEGORI_TINDAK_LANJUT_OPTIONS,
 } from '@/types';
 import { Button } from '@/Components/ui/Button';
 import { StatusBadge } from '@/Components/ui/Badge';
@@ -14,8 +15,13 @@ import { PatientDetailModal } from '@/Components/Pasien/PatientDetailModal';
 import { AddPatientModal } from '@/Components/Pasien/AddPatientModal';
 import { ImportExcelModal } from '@/Components/Pasien/ImportExcelModal';
 import { exportToExcel } from '@/lib/excel-utils';
+import { exportToPdf } from '@/lib/pdf-utils';
+import { csrfHeaders } from '@/lib/csrf';
+import { Menu, MenuButton, MenuItem, MenuItems, Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import {
     Search,
+    ChevronDown,
+    FileText,
     Filter,
     Plus,
     FileSpreadsheet,
@@ -36,8 +42,9 @@ import { motion, AnimatePresence } from 'motion/react';
 interface Props {
     pasienList: PasienPRB[];
     tanggalEvaluasi: string;
+    tanggalEvaluasiBawaan: string; // akhir periode penelitian, mis. 2026-05-31
     filters: Filters;
-    diagnosisOptions: DiagnosisPRB[];
+    diagnosisOptions: string[]; // 9 diagnosis baku + diagnosis lain yang ada di data
     alasanPasifOptions: string[];
     fktpOptions: string[];
     periodeOptions: { value: string; label: string }[];
@@ -46,6 +53,7 @@ interface Props {
 export default function PasienIndex({
     pasienList,
     tanggalEvaluasi,
+    tanggalEvaluasiBawaan,
     filters,
     diagnosisOptions,
     fktpOptions,
@@ -56,7 +64,7 @@ export default function PasienIndex({
     const [showFilters, setShowFilters] = useState(false);
     
     // Sorting states
-    const [sortBy, setSortBy] = useState(filters.sort_by || 'kode_pasien');
+    const [sortBy, setSortBy] = useState(filters.sort_by || 'prioritas_ews');
     const [sortOrder, setSortOrder] = useState(filters.sort_order || 'asc');
 
     // Modal states
@@ -193,6 +201,17 @@ export default function PasienIndex({
         );
     };
 
+    // Filter diagnosis (ceklis, bisa lebih dari satu)
+    const diagnosisTerpilih: string[] = Array.isArray(filters.filter_diagnosis)
+        ? filters.filter_diagnosis
+        : filters.filter_diagnosis ? [filters.filter_diagnosis] : [];
+    const toggleDiagnosis = (diag: string) => {
+        const baru = diagnosisTerpilih.includes(diag)
+            ? diagnosisTerpilih.filter((d) => d !== diag)
+            : [...diagnosisTerpilih, diag];
+        applyFilters({ filter_diagnosis: baru });
+    };
+
     // Apply filters
     const applyFilters = useCallback(
         (
@@ -222,8 +241,8 @@ export default function PasienIndex({
     // Reset filters
     const resetFilters = () => {
         setSearchTerm('');
-        setEvalDate(new Date().toLocaleDateString('en-CA')); // format YYYY-MM-DD
-        setSortBy('kode_pasien');
+        setEvalDate(tanggalEvaluasiBawaan); // akhir periode penelitian, mis. 2026-05-31
+        setSortBy('prioritas_ews');
         setSortOrder('asc');
         router.get('/pasien', {}, { preserveState: true, preserveScroll: true });
     };
@@ -250,8 +269,21 @@ export default function PasienIndex({
         }
     };
 
-    // Export data
-    const handleExport = async () => {
+    // Kepala laporan PDF
+    const labelPeriode = () => filters.filter_periode
+        ? periodeOptions?.find((o) => o.value === filters.filter_periode)?.label ?? filters.filter_periode
+        : 'Semua Periode';
+    const ringkasanStatus = (rows: Record<string, any>[]) => {
+        const jumlah = rows.reduce<Record<string, number>>((acc, row) => {
+            const st = row['Status Kepatuhan'] || '-';
+            acc[st] = (acc[st] ?? 0) + 1;
+            return acc;
+        }, {});
+        return `Jumlah pasien: ${rows.length}  ·  ` + Object.entries(jumlah).map(([st, n]) => `${st}: ${n}`).join('  ·  ');
+    };
+
+    // Export data — Excel atau PDF, isi sama (sesuai filter yang aktif)
+    const handleExport = async (format: 'excel' | 'pdf' = 'excel') => {
         try {
             const queryParams = new URLSearchParams({
                 tanggal_evaluasi: evalDate,
@@ -259,11 +291,14 @@ export default function PasienIndex({
                 filter_status: filters.filter_status || '',
                 filter_periode: filters.filter_periode || '',
                 filter_kepatuhan: filters.filter_kepatuhan || '',
-                filter_diagnosis: filters.filter_diagnosis || '',
                 filter_fktp: filters.filter_fktp || '',
                 filter_jenis_prb: filters.filter_jenis_prb || '',
                 filter_early_warning: filters.filter_early_warning || '',
+                filter_tindak_lanjut: filters.filter_tindak_lanjut || '',
             });
+            diagnosisTerpilih.forEach((d) => queryParams.append('filter_diagnosis[]', d));
+            // PDF memuat Histori Pengambilan; Excel biasa tetap satu sheet
+            if (format === 'pdf') queryParams.set('dengan_histori', '1');
 
             const res = await fetch(
                 `/pasien-export?${queryParams.toString()}`
@@ -276,22 +311,113 @@ export default function PasienIndex({
                 fktpName = filters.filter_fktp.replace(/\s+/g, '_');
             }
 
-            exportToExcel(
-                data,
-                `Laporan_PRB_${fktpName}_${evalDate}.xlsx`
+            if (format === 'excel') {
+                exportToExcel(
+                    data,
+                    `Laporan_PRB_${fktpName}_${evalDate}.xlsx`
+                );
+                return;
+            }
+
+            const filterLain = [
+                filters.filter_status && `Status: ${filters.filter_status}`,
+                filters.filter_kepatuhan && `Kepatuhan: ${filters.filter_kepatuhan}`,
+                diagnosisTerpilih.length > 0 && `Diagnosis: ${diagnosisTerpilih.join(', ')}`,
+                filters.filter_jenis_prb && `Jenis PRB: ${filters.filter_jenis_prb}`,
+                filters.filter_early_warning && `Early Warning: ${filters.filter_early_warning}`,
+                filters.filter_tindak_lanjut && `Tindak Lanjut: ${filters.filter_tindak_lanjut}`,
+                filters.search && `Pencarian: "${filters.search}"`,
+            ].filter(Boolean).join(' · ');
+
+            // PDF: { pasien, histori } — histori sama dengan tab Histori Pengambilan
+            const barisPasien: Record<string, any>[] = data.pasien;
+            const histori: Record<string, any>[] = data.histori;
+
+            exportToPdf(
+                barisPasien,
+                `Laporan_PRB_${fktpName}_${evalDate}.pdf`,
+                {
+                    judul: 'Laporan Data Pasien PRB',
+                    keterangan: [
+                        `Periode: ${labelPeriode()}  ·  FKTP: ${filters.filter_fktp || 'Semua FKTP'}  ·  Tanggal evaluasi: ${evalDate.split('-').reverse().join('/')}`,
+                        ...(filterLain ? [`Filter: ${filterLain}`] : []),
+                        ringkasanStatus(barisPasien),
+                    ],
+                    // Periode sudah tertulis di kepala laporan
+                    kolom: Object.keys(barisPasien[0] ?? {}).filter((k) => k !== 'Periode Laporan'),
+                    kolomStatus: 'Status Kepatuhan',
+                    tabelTambahan: [{
+                        judul: `Histori Pengambilan Obat (${histori.length} pengambilan)`,
+                        data: histori,
+                        kolomStatus: 'Status Kepatuhan',
+                    }],
+                }
             );
         } catch (e) {
             alert('Gagal mengekspor data.');
         }
     };
 
+    // Export pasien yang dicentang, beserta Histori Pengambilan (sheet kedua / tabel kedua di PDF)
+    const [isExportingTerpilih, setIsExportingTerpilih] = useState(false);
+    const handleExportTerpilih = async (format: 'excel' | 'pdf' = 'excel') => {
+        setIsExportingTerpilih(true);
+        try {
+            const res = await fetch('/pasien-export', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                body: JSON.stringify({
+                    ids: Array.from(selectedIds),
+                    tanggal_evaluasi: evalDate,
+                    filter_periode: filters.filter_periode || '',
+                }),
+            });
+            if (!res.ok) {
+                throw new Error(res.status === 419 ? 'Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.' : `Kode ${res.status}`);
+            }
+
+            const data = await res.json();
+
+            if (format === 'excel') {
+                exportToExcel(
+                    data.pasien,
+                    `Laporan_PRB_${selectedIds.size}_Pasien_${evalDate}.xlsx`,
+                    [{ nama: 'Histori Pengambilan', data: data.histori }]
+                );
+                return;
+            }
+
+            exportToPdf(
+                data.pasien,
+                `Laporan_PRB_${selectedIds.size}_Pasien_${evalDate}.pdf`,
+                {
+                    judul: 'Laporan Pasien PRB Terpilih',
+                    keterangan: [
+                        `Periode: ${labelPeriode()}  ·  Tanggal evaluasi: ${evalDate.split('-').reverse().join('/')}`,
+                        ringkasanStatus(data.pasien),
+                    ],
+                    kolom: Object.keys(data.pasien[0] ?? {}).filter((k) => k !== 'Periode Laporan'),
+                    kolomStatus: 'Status Kepatuhan',
+                    tabelTambahan: [{
+                        judul: `Histori Pengambilan Obat (${data.histori.length} pengambilan)`,
+                        data: data.histori,
+                        kolomStatus: 'Status Kepatuhan',
+                    }],
+                }
+            );
+        } catch (e: any) {
+            alert(`Gagal mengekspor data. ${e?.message ?? ''}`);
+        } finally {
+            setIsExportingTerpilih(false);
+        }
+    };
+
     // Filter status options
+    // Hanya status yang sudah dinilai (sama dengan Rekap Kepatuhan)
     const statusKepatuhanOptions: StatusKepatuhan[] = [
         'Patuh',
-        'Dalam Toleransi',
-        'Tidak Patuh',
-        'Belum Jatuh Tempo',
-        'Pasif',
+        'Tidak Teratur',
     ];
 
     // Format tanggal: DD/MM/YYYY
@@ -355,12 +481,13 @@ export default function PasienIndex({
                             onChange={(e) => handleSortChange(e.target.value)}
                             title="Urutkan Berdasarkan"
                         >
-                            {/* Urut sesuai kolom tabel, kiri → kanan */}
+                            {/* Bawaan: paling mendesak hari ini di atas; lalu urut kolom tabel */}
+                            <option value="prioritas_ews">Prioritas Early Warning</option>
                             <option value="kode_pasien">Kode Pasien</option>
                             <option value="noka">NOKA</option>
                             <option value="jenis_prb">Jenis PRB</option>
                             <option value="fktp_asal">FKTP Asal</option>
-                            <option value="tanggal_mulai_prb">Mulai PRB</option>
+                            <option value="tanggal_mulai_prb">Tanggal Aktif</option>
                             <option value="tanggal_pengambilan_terakhir">Terakhir Ambil Obat</option>
                             <option value="tanggal_jadwal_berikutnya">
                                 {filters.filter_periode ? 'Jadwal Pengambilan' : 'Jadwal Selanjutnya'}
@@ -424,13 +551,38 @@ export default function PasienIndex({
                         Import
                     </Button>
 
-                    <Button
-                        variant="outline"
-                        onClick={handleExport}
-                    >
-                        <Download className="w-4 h-4 mr-2" />
-                        Export
-                    </Button>
+                    <Menu as="div" className="relative">
+                        <MenuButton className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-500 px-4 py-2 text-sm gap-2">
+                            <Download className="w-4 h-4" />
+                            Export
+                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </MenuButton>
+                        <MenuItems
+                            anchor="bottom end"
+                            className="z-50 mt-1 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg focus:outline-none"
+                        >
+                            <MenuItem>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExport('excel')}
+                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 data-[focus]:bg-slate-100"
+                                >
+                                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                                    Excel (.xlsx)
+                                </button>
+                            </MenuItem>
+                            <MenuItem>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExport('pdf')}
+                                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 data-[focus]:bg-slate-100"
+                                >
+                                    <FileText className="w-4 h-4 text-rose-600" />
+                                    PDF (.pdf)
+                                </button>
+                            </MenuItem>
+                        </MenuItems>
+                    </Menu>
 
                     <Button
                         onClick={() =>
@@ -461,7 +613,7 @@ export default function PasienIndex({
                         }}
                         className="overflow-hidden mb-6"
                     >
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
                             {/* Status Pasien */}
                             <div>
                                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -470,7 +622,7 @@ export default function PasienIndex({
 
                                 <select
                                     value={
-                                        filters.filter_status
+                                        filters.filter_status || ''
                                     }
                                     onChange={(e) =>
                                         applyFilters({
@@ -532,7 +684,7 @@ export default function PasienIndex({
 
                                 <select
                                     value={
-                                        filters.filter_kepatuhan
+                                        filters.filter_kepatuhan || ''
                                     }
                                     onChange={(e) =>
                                         applyFilters({
@@ -581,16 +733,16 @@ export default function PasienIndex({
                                         Semua Warning
                                     </option>
                                     <option value="Jadwal Mendekat">
-                                        🟡 Jadwal Mendekat
+                                        Jadwal Mendekat
                                     </option>
                                     <option value="Jatuh Tempo">
-                                        🟠 Jatuh Tempo
+                                        Jatuh Tempo
                                     </option>
                                     <option value="Belum Mengambil">
-                                        🟠 Belum Mengambil
+                                        Belum Mengambil
                                     </option>
-                                    <option value="Tidak Patuh">
-                                        🔴 Tidak Patuh / Overdue
+                                    <option value="Tidak Teratur">
+                                        Tidak Teratur / Overdue
                                     </option>
                                 </select>
                             </div>
@@ -627,6 +779,75 @@ export default function PasienIndex({
                                             </option>
                                         )
                                     )}
+                                </select>
+                            </div>
+
+                            {/* Diagnosis — ceklis, bisa lebih dari satu */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                    Diagnosis
+                                </label>
+
+                                <Popover className="relative">
+                                    <PopoverButton className="w-full flex items-center justify-between gap-2 text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white text-left focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500">
+                                        <span className="truncate">
+                                            {diagnosisTerpilih.length === 0
+                                                ? 'Semua Diagnosis'
+                                                : diagnosisTerpilih.length === 1
+                                                    ? diagnosisTerpilih[0]
+                                                    : `${diagnosisTerpilih.length} diagnosis dipilih`}
+                                        </span>
+                                        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                                    </PopoverButton>
+                                    <PopoverPanel
+                                        anchor="bottom start"
+                                        className="z-50 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg focus:outline-none"
+                                    >
+                                        <div className="max-h-64 overflow-y-auto">
+                                            {diagnosisOptions.map((d) => (
+                                                <label key={d} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={diagnosisTerpilih.includes(d)}
+                                                        onChange={() => toggleDiagnosis(d)}
+                                                        className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                    />
+                                                    {d}
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {diagnosisTerpilih.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => applyFilters({ filter_diagnosis: [] })}
+                                                className="mt-1 w-full text-xs text-rose-600 hover:text-rose-700 px-2 py-1.5 text-left border-t border-slate-100"
+                                            >
+                                                Hapus pilihan diagnosis
+                                            </button>
+                                        )}
+                                    </PopoverPanel>
+                                </Popover>
+                            </div>
+
+                            {/* Tindak Lanjut — kategori tindak lanjut terakhir */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                    Tindak Lanjut
+                                </label>
+
+                                <select
+                                    value={filters.filter_tindak_lanjut || ''}
+                                    onChange={(e) =>
+                                        applyFilters({
+                                            filter_tindak_lanjut: e.target.value,
+                                        })
+                                    }
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                >
+                                    <option value="">Semua Tindak Lanjut</option>
+                                    {KATEGORI_TINDAK_LANJUT_OPTIONS.map((k) => (
+                                        <option key={k} value={k}>{k}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -669,14 +890,51 @@ export default function PasienIndex({
                                 </button>
                             </div>
 
-                            <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => setShowBulkDeleteConfirm(true)}
-                            >
-                                <Trash2 className="w-4 h-4 mr-1" />
-                                Hapus {selectedIds.size} Pasien
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Menu as="div" className="relative">
+                                    <MenuButton
+                                        disabled={isExportingTerpilih}
+                                        className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-500 px-3 py-1.5 text-xs gap-1.5 disabled:opacity-50"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        {isExportingTerpilih ? 'Menyiapkan...' : `Export ${selectedIds.size} Pasien`}
+                                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                    </MenuButton>
+                                    <MenuItems
+                                        anchor="bottom end"
+                                        className="z-50 mt-1 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg focus:outline-none"
+                                    >
+                                        <MenuItem>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleExportTerpilih('excel')}
+                                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 data-[focus]:bg-slate-100"
+                                            >
+                                                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                                                Excel (.xlsx)
+                                            </button>
+                                        </MenuItem>
+                                        <MenuItem>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleExportTerpilih('pdf')}
+                                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 data-[focus]:bg-slate-100"
+                                            >
+                                                <FileText className="w-4 h-4 text-rose-600" />
+                                                PDF (.pdf)
+                                            </button>
+                                        </MenuItem>
+                                    </MenuItems>
+                                </Menu>
+                                <Button
+                                    variant="danger"
+                                    size="sm"
+                                    onClick={() => setShowBulkDeleteConfirm(true)}
+                                >
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    Hapus {selectedIds.size} Pasien
+                                </Button>
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -710,7 +968,7 @@ export default function PasienIndex({
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[130px]">
-                                    Mulai PRB
+                                    Tanggal Aktif
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[150px]">
@@ -787,6 +1045,11 @@ export default function PasienIndex({
                                                             <div className="font-semibold text-slate-800 leading-tight whitespace-normal break-words">
                                                                 {pasien.kode_pasien}
                                                             </div>
+                                                            {pasien.nama_samaran && (
+                                                                <div className="text-xs text-slate-600 whitespace-normal">
+                                                                    {pasien.nama_samaran}
+                                                                </div>
+                                                            )}
                                                             <div className="mt-0.5 mb-1">
                                                                 <span
                                                                     className={`inline-block text-[10px] px-1.5 py-0.5 rounded-sm border font-medium uppercase tracking-wider ${
@@ -835,9 +1098,9 @@ export default function PasienIndex({
 
                                                 {/* 4. TERAKHIR AMBIL OBAT */}
                                                 <td className="px-5 py-4 whitespace-nowrap">
-                                                    {pasien.status === 'Pasif' ? (
+                                                    {pasien.status !== 'Aktif' ? (
                                                         <span className="text-slate-400 text-xs italic">
-                                                            Pasien Non-Aktif
+                                                            Pasien {pasien.status}
                                                         </span>
                                                     ) : editingTerakhirId === pasien.id ? (
                                                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -880,9 +1143,9 @@ export default function PasienIndex({
 
                                                 {/* 5. JADWAL SELANJUTNYA */}
                                                 <td className="px-5 py-4 whitespace-nowrap">
-                                                    {pasien.status === 'Pasif' ? (
+                                                    {pasien.status !== 'Aktif' ? (
                                                         <span className="text-slate-400 text-xs italic">
-                                                            Pasien Non-Aktif
+                                                            Pasien {pasien.status}
                                                         </span>
                                                     ) : (
                                                         <div
@@ -904,7 +1167,7 @@ export default function PasienIndex({
                                                 {/* 6. EARLY WARNING */}
                                                 <td className="px-5 py-4 whitespace-nowrap">
                                                     {(() => {
-                                                        if (pasien.status === 'Pasif') {
+                                                        if (pasien.status !== 'Aktif') {
                                                             return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border text-slate-500 bg-slate-100 border-slate-200">Tidak Berlaku</span>;
                                                         }
 
@@ -915,30 +1178,24 @@ export default function PasienIndex({
 
                                                         let ewColor = 'text-slate-500 bg-slate-50 border-slate-200';
                                                         let ewLabel = ew;
-                                                        let ewIcon = '';
 
                                                         if (ew === 'Belum memasuki jadwal') {
                                                             ewColor = 'text-blue-700 bg-blue-50 border-blue-200';
-                                                            ewIcon = '🔵 ';
                                                         } else if (ew === 'Jadwal Mendekat' || ew === 'Jadwal mendekat') {
                                                             ewColor = 'text-amber-700 bg-amber-50 border-amber-200';
-                                                            ewIcon = '🟡 ';
                                                         } else if (ew === 'Jatuh Tempo' || ew === 'Jatuh tempo' || ew === 'Masih Toleransi' || ew === 'Belum mengambil, masih toleransi') {
                                                             ewColor = 'text-orange-700 bg-orange-50 border-orange-200';
-                                                            ewIcon = '🟠 ';
-                                                        } else if (ew === 'Tidak Patuh/Overdue' || ew === 'Tidak patuh/Overdue') {
+                                                        } else if (ew === 'Tidak Teratur/Overdue' || ew === 'Tidak teratur/Overdue') {
                                                             ewColor = 'text-rose-700 bg-rose-50 border-rose-200';
-                                                            ewIcon = '🔴 ';
                                                         } else if (ew === 'Patuh') {
                                                             ewColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
-                                                            ewIcon = '🟢 ';
                                                         } else if (ew === 'Pasif' || ew === 'Tidak Berlaku') {
                                                             ewColor = 'text-slate-500 bg-slate-100 border-slate-200';
                                                         }
 
                                                         return (
                                                             <span className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border ${ewColor}`}>
-                                                                {ewIcon}{ewLabel}
+                                                                {ewLabel}
                                                             </span>
                                                         );
                                                     })()}
@@ -946,8 +1203,8 @@ export default function PasienIndex({
 
                                                 {/* 7. STATUS KEPATUHAN */}
                                                 <td className="px-5 py-4 whitespace-nowrap">
-                                                    {pasien.status === 'Pasif' ? (
-                                                        <StatusBadge status="Pasif" />
+                                                    {pasien.status !== 'Aktif' ? (
+                                                        <StatusBadge status={pasien.status} />
                                                     ) : (
                                                         <StatusBadge
                                                             status={
@@ -1061,6 +1318,8 @@ export default function PasienIndex({
                 pasienId={detailPasienId}
                 tanggalEvaluasi={evalDate}
                 filterPeriode={filters.filter_periode || ''}
+                // Setelah tindak lanjut disimpan, filter Tindak Lanjut ikut kategori itu (filter lain tetap)
+                onTindakLanjutTersimpan={(kategori) => applyFilters({ filter_tindak_lanjut: kategori })}
             />
 
             {/* MODAL KONFIRMASI HAPUS */}
@@ -1098,7 +1357,7 @@ export default function PasienIndex({
                                         <p className="mt-2 text-sm text-slate-600">
                                             Apakah Anda yakin ingin menghapus data pasien{' '}
                                             <span className="font-semibold text-slate-800">
-                                                {deletePasien.kode_pasien}
+                                                {deletePasien.kode_pasien} · {(deletePasien.diagnosis_prb ?? []).join(', ')}
                                             </span>
                                             ? Tindakan ini tidak dapat dibatalkan dan semua riwayat terkait akan ikut terhapus.
                                         </p>
@@ -1108,6 +1367,10 @@ export default function PasienIndex({
                                                 <div>
                                                     <span className="font-medium">Kode:</span>{' '}
                                                     {deletePasien.kode_pasien}
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Diagnosis:</span>{' '}
+                                                    {(deletePasien.diagnosis_prb ?? []).join(', ') || '-'}
                                                 </div>
                                                 <div>
                                                     <span className="font-medium">NOKA:</span>{' '}

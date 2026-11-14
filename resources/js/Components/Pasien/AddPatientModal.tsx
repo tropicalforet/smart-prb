@@ -4,6 +4,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import { UserPlus, Save } from 'lucide-react';
+import { samarkanNama } from '@/lib/samaran';
 
 interface Props {
     isOpen: boolean;
@@ -15,6 +16,8 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [formData, setFormData] = useState({
         noka: '',
+        nama_samaran: '',
+        no_whatsapp: '',
         fktp_asal: '',
         diagnosis_prb: [] as string[],
         tanggal_mulai_prb: new Date().toISOString().split('T')[0],
@@ -29,6 +32,9 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
         if (name === 'noka') {
             // NOKA / NOKA tersandi: format bebas, maks 100 karakter
             setFormData(prev => ({ ...prev, [name]: value.slice(0, 100) }));
+        } else if (name === 'no_whatsapp') {
+            // Hanya angka, spasi, tanda hubung, dan + (dirapikan di server)
+            setFormData(prev => ({ ...prev, [name]: value.replace(/[^\d\s+-]/g, '').slice(0, 20) }));
         } else if (name === 'fktp_asal') {
             const cleanFktp = value.replace(/[^\p{L}\p{N}\p{P}\p{Z}]/gu, '');
             setFormData(prev => ({ ...prev, [name]: cleanFktp.slice(0, 255) }));
@@ -61,6 +67,8 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
         const payload = {
             ...formData,
             noka: cleanNoka,
+            nama_samaran: samarkanNama(formData.nama_samaran),
+            no_whatsapp: formData.no_whatsapp.trim(),
             fktp_asal: cleanFktp
         };
 
@@ -120,8 +128,44 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                             {errors.noka && (
                                 <p className="text-xs text-rose-600 mt-1 font-medium">⚠ {errors.noka}</p>
                             )}
+                        </div>
+
+                        <div>
+                            <label htmlFor="nama_samaran" className="block text-xs font-medium text-slate-700 mb-1">Nama Pasien (Opsional)</label>
+                            <input
+                                type="text"
+                                id="nama_samaran"
+                                name="nama_samaran"
+                                value={formData.nama_samaran}
+                                onChange={handleChange}
+                                maxLength={150}
+                                placeholder="Contoh: Rizka Dwi Putri"
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
+                            />
                             <p className="text-xs text-slate-500 mt-1">
-                                Sesuai ketentuan etik, nama pasien dan No. HP tidak dicatat. Pasien dikenali dari NOKA.
+                                {formData.nama_samaran.trim()
+                                    ? <>Disimpan tersamar: <span className="font-mono">{samarkanNama(formData.nama_samaran)}</span></>
+                                    : 'Sesuai ketentuan etik, nama hanya disimpan tersamar (huruf pertama & terakhir tiap kata).'}
+                            </p>
+                        </div>
+
+                        <div>
+                            <label htmlFor="no_whatsapp" className="block text-xs font-medium text-slate-700 mb-1">No. WhatsApp (Opsional)</label>
+                            <input
+                                type="tel"
+                                id="no_whatsapp"
+                                name="no_whatsapp"
+                                value={formData.no_whatsapp}
+                                onChange={handleChange}
+                                inputMode="tel"
+                                placeholder="Contoh: 081234567890"
+                                className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:border-teal-500 focus:ring-teal-500 ${errors.no_whatsapp ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`}
+                            />
+                            {errors.no_whatsapp && (
+                                <p className="text-xs text-rose-600 mt-1 font-medium">⚠ {errors.no_whatsapp}</p>
+                            )}
+                            <p className="text-xs text-slate-500 mt-1">
+                                Isi hanya jika pasien bersedia diingatkan jadwal ambil obat lewat WhatsApp. Boleh dikosongkan.
                             </p>
                         </div>
                     </div>
@@ -131,7 +175,7 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                         <h4 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Data Program PRB</h4>
                         
                         <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB *</label>
+                            <label className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB * <span className="font-normal text-slate-500">(lebih dari satu → dibuat satu data per diagnosis)</span></label>
                             <div className="grid grid-cols-2 gap-2 mt-2">
                                 {DIAGNOSIS_OPTIONS.map(opt => (
                                     <label key={opt} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">

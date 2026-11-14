@@ -49,8 +49,6 @@ class TindakLanjutTest extends TestCase
         $this->assertSame([
             'Sudah mengambil obat',
             'Belum mengambil obat',
-            'Tidak dapat dihubungi',
-            'Kendala pengambilan obat',
         ], RiwayatTindakLanjut::TINDAKAN_OPTIONS);
     }
 
@@ -58,12 +56,10 @@ class TindakLanjutTest extends TestCase
     {
         $pasien = $this->pasien();
 
-        foreach (['Belum mengambil obat', 'Tidak dapat dihubungi', 'Kendala pengambilan obat'] as $tindakan) {
-            $this->post(route('tindak-lanjut.store', $pasien), ['tindakan' => $tindakan])
-                ->assertSessionHasNoErrors();
-        }
+        $this->post(route('tindak-lanjut.store', $pasien), ['tindakan' => 'Belum mengambil obat', 'kategori' => 'Kontak langsung'])
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame(3, $pasien->riwayatTindakLanjut()->count());
+        $this->assertSame(1, $pasien->riwayatTindakLanjut()->count());
         $this->assertSame(0, $pasien->riwayatPengambilanObat()->count());
     }
 
@@ -73,6 +69,7 @@ class TindakLanjutTest extends TestCase
 
         $this->post(route('tindak-lanjut.store', $pasien), [
             'tindakan'          => 'Sudah mengambil obat',
+            'kategori'          => 'Kontak langsung',
             'tanggal_realisasi' => '2026-10-26',
         ])->assertSessionHasNoErrors();
 
@@ -84,8 +81,10 @@ class TindakLanjutTest extends TestCase
     {
         $pasien = $this->pasien();
 
-        $this->post(route('tindak-lanjut.store', $pasien), ['tindakan' => 'Rujuk FKTP'])
-            ->assertSessionHasErrors('tindakan');
+        foreach (['Rujuk FKTP', 'Tidak dapat dihubungi', 'Kendala pengambilan obat'] as $pilihanLama) {
+            $this->post(route('tindak-lanjut.store', $pasien), ['tindakan' => $pilihanLama])
+                ->assertSessionHasErrors('tindakan');
+        }
         $this->post(route('tindak-lanjut.store', $pasien), ['tindakan' => 'Sudah mengambil obat'])
             ->assertSessionHasErrors('tanggal_realisasi');
         $this->post(route('tindak-lanjut.store', $pasien), [

@@ -5,6 +5,7 @@ namespace App\Exports;
 use App\Models\PasienPrb;
 use App\Services\KepatuhanService;
 use Carbon\Carbon;
+use Illuminate\Support\Enumerable;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
@@ -39,14 +40,14 @@ class RekapKepatuhanExport implements
         $this->filterPeriode = $filterPeriode;
         $this->filterFktp = $filterFktp;
         $this->filterKepatuhan = $filterKepatuhan;
-        $this->tanggalEvaluasi = $tanggalEvaluasi ?? Carbon::today()->toDateString();
+        $this->tanggalEvaluasi = $tanggalEvaluasi ?? KepatuhanService::tanggalEvaluasiBawaan();
         $this->kepatuhanService = app(KepatuhanService::class);
     }
 
     /**
      * Return collection data untuk Excel
      */
-    public function collection()
+    public function collection(): Enumerable
     {
         // Sama dengan halaman Rekap: hanya pasien Aktif.
         $query = PasienPrb::aktif()->with([
@@ -115,6 +116,9 @@ class RekapKepatuhanExport implements
             ];
         });
 
+        // Sama dengan halaman Rekap: hanya pasien yang sudah dinilai
+        $data = $data->whereIn('status_kepatuhan', KepatuhanService::STATUS_DINILAI);
+
         // Filter kepatuhan (jika ada)
         if ($this->filterKepatuhan) {
             $data = $data->filter(function ($row) {
@@ -149,7 +153,7 @@ class RekapKepatuhanExport implements
     /**
      * Styling untuk Excel
      */
-    public function styles(Worksheet $sheet)
+    public function styles(Worksheet $sheet): ?array
     {
         return [
             // Header row styling

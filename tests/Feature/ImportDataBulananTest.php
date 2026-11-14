@@ -61,10 +61,10 @@ class ImportDataBulananTest extends TestCase
         $this->assertSame(1, $riwayat[1]->selisih_hari);
         $this->assertSame('Patuh', $riwayat[1]->status_kepatuhan);
 
-        // Mei: target = April + 30 = 20/05 → ambil 28/05 → H+8 → Tidak Patuh
+        // Mei: target = April + 30 = 20/05 → ambil 28/05 → H+8 → Tidak Teratur
         $this->assertSame('2026-05-20', $riwayat[2]->jadwal_target->toDateString());
         $this->assertSame(8, $riwayat[2]->selisih_hari);
-        $this->assertSame('Tidak Patuh', $riwayat[2]->status_kepatuhan);
+        $this->assertSame('Tidak Teratur', $riwayat[2]->status_kepatuhan);
 
         $this->assertSame('Lama', $pasien->jenis_prb);
         $this->assertSame('2026-06-27', $pasien->tanggal_jadwal_berikutnya->toDateString());

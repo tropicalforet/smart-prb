@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { samarkanNama } from '@/lib/samaran';
 import { PasienPRB } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,6 +21,10 @@ const DATA_SHEET_HEADER_KEYWORDS: string[] = [
     'no. kartu bpjs',
     'no kartu bpjs',
     'no_kartu_bpjs',
+    'no. bpjs',
+    'no bpjs',
+    'no_bpjs',
+    'nomor bpjs',
     'noka tersandi',
     'noka / noka tersandi',
     'noka',
@@ -95,6 +100,7 @@ export interface ImportRow {
     no_faktur?: string;
     kode_pasien?: string;
     noka: string;
+    nama_samaran?: string; // sudah disamarkan di browser — nama asli tidak dikirim
     fktp_asal: string;
     diagnosis_prb: string[];
     tanggal_mulai_prb?: string;
@@ -110,6 +116,8 @@ export interface ValidationResult {
     valid: boolean;
     errors: string[];
     warnings: string[];     // tidak memblokir impor, hanya untuk dicek petugas
+    barisDigabung?: number[]; // baris lain dengan NOKA & diagnosis sama yang digabung ke baris ini
+    dipisahDariSel?: boolean; // berasal dari sel berisi beberapa diagnosis yang dipisah per diagnosis
 }
 
 /**
@@ -295,7 +303,11 @@ function pickByHeader(row: Record<string, any>, cocok: (nk: string) => boolean):
     return undefined;
 }
 
-const isHeaderNoka      = (nk: string) => nk.startsWith('noka') || nk.includes('kartubpjs');
+// NOKA = No. BPJS: "NOKA", "No. Kartu BPJS", "No. BPJS", "Nomor BPJS", "No. Peserta BPJS"
+const isHeaderNoka      = (nk: string) =>
+    nk.startsWith('noka') || nk.includes('kartubpjs') || /^(no|nomor)(peserta)?bpjs/.test(nk);
+const isHeaderKodePasien = (nk: string) => nk === 'idprb' || nk.startsWith('kodepasien') || nk === 'kodeprb';
+const isHeaderNama      = (nk: string) => nk === 'nama' || nk.startsWith('namapasien') || nk.startsWith('namapeserta');
 const isHeaderFktp      = (nk: string) => nk.startsWith('fktp') || nk.startsWith('faskes');
 const isHeaderDiagnosis = (nk: string) => nk.startsWith('diagnos');
 const isHeaderMulai     = (nk: string) => /^(tanggal|tgl)mulai/.test(nk);
@@ -438,6 +450,18 @@ function normalisasiFktp(raw: any): string {
 }
 
 /**
+ * Format data apotek dengan satu kolom per FKTP (B.SBY | GRIYA ANTAPANI | KPMA | ...):
+ * sel berisi "ADA" menandai FKTP tempat peserta ditemukan. Mengembalikan
+ * nama-nama FKTP (judul kolom) yang ditandai, urut kiri → kanan.
+ */
+function fktpBertandaAda(row: Record<string, any>): string[] {
+    return Object.entries(row)
+        .filter(([header, val]) => !header.startsWith('_') && String(val ?? '').trim().toUpperCase() === 'ADA')
+        .map(([header]) => normalisasiFktp(header))
+        .filter(Boolean);
+}
+
+/**
  * Tanggal mulai PRB. Selain format yang dikenali formatDateValue(),
  * teks berformat bulan/tanggal (gaya Excel AS, mis. "11/19/2025") yang
  * tidak valid sebagai DD/MM dicoba sebagai MM/DD dan diberi peringatan.
@@ -526,12 +550,15 @@ export function validateImportData(
                     row['tanggal_berobat']
             ) || undefined;
 
-        // NOKA / NOKA tersandi: identitas pasien dari apotek.
-        // Header lama "No. Kartu BPJS" tetap diterima sebagai alias NOKA.
+        // NOKA / NOKA tersandi: identitas pasien dari apotek. NOKA = No. BPJS,
+        // jadi header "No. BPJS" / "No. Kartu BPJS" / "Nomor BPJS" juga diterima.
         // Trim spasi di awal/akhir saja, jangan hapus spasi dalam NOKA.
-        const rawNoka = String(
-            row['NOKA / NOKA Tersandi'] ?? row['noka'] ?? pickByHeader(row, isHeaderNoka) ?? ''
-        ).trim();
+        const nokaSel = row['NOKA / NOKA Tersandi'] ?? row['noka'] ?? pickByHeader(row, isHeaderNoka) ?? '';
+        // No. BPJS 13 digit yang tersimpan sebagai ANGKA di Excel kehilangan
+        // angka 0 di depan (0001234567890 → 1234567890) — kembalikan.
+        const rawNoka = typeof nokaSel === 'number'
+            ? String(Math.round(nokaSel)).padStart(13, '0')
+            : String(nokaSel).trim();
 
         const diagnosisList = pecahDiagnosis(
             row['Diagnosis PRB'] ?? row['diagnosis_prb'] ?? pickByHeader(row, isHeaderDiagnosis) ?? ''
@@ -540,20 +567,25 @@ export function validateImportData(
         const mapped: ImportRow = {
             no_faktur: noFaktur,
 
+            // Kode pasien dari file ("Kode Pasien" / "ID_PRB"); kosong → dibuat otomatis
             kode_pasien:
                 String(
                     row['Kode Pasien'] ??
                         row['kode_pasien'] ??
+                        pickByHeader(row, isHeaderKodePasien) ??
                         ''
                 ).trim() || undefined,
 
-            // Nama Pasien & No. HP sengaja TIDAK dibaca walaupun kolomnya ada
-            // di file — sesuai ketentuan etik penelitian.
+            // Nama pasien langsung disamarkan ("R***a D*i P***i") — nama asli
+            // tidak pernah dikirim. No. HP tetap TIDAK dibaca (ketentuan etik).
             noka: rawNoka,
 
+            nama_samaran: samarkanNama(row['Nama Pasien'] ?? pickByHeader(row, isHeaderNama)) || undefined,
+
+            // Kolom FKTP biasa; bila tidak ada, dari kolom FKTP yang bertanda "ADA"
             fktp_asal: normalisasiFktp(
                 row['FKTP / Faskes Asal'] ?? row['fktp_asal'] ?? pickByHeader(row, isHeaderFktp)
-            ),
+            ) || fktpBertandaAda(row)[0] || '',
 
             diagnosis_prb: diagnosisList,
 
@@ -615,23 +647,29 @@ export function validateImportData(
         // ── Field wajib ────────────────────────────────────────────────
 
         if (!mapped.noka) {
-            errors.push('NOKA / NOKA Tersandi wajib diisi');
+            errors.push('NOKA / No. BPJS wajib diisi');
         }
 
         if (!mapped.fktp_asal) {
-            errors.push('FKTP / Faskes Asal wajib diisi');
+            errors.push('FKTP / Faskes Asal wajib diisi (kolom FKTP atau tanda "ADA" di kolom FKTP)');
+        }
+
+        const tandaAda = fktpBertandaAda(row);
+        if (tandaAda.length > 1 && mapped.fktp_asal === tandaAda[0]) {
+            warnings.push(`Ditandai "ADA" di ${tandaAda.length} FKTP (${tandaAda.join(', ')}) — dipakai ${tandaAda[0]}`);
         }
 
         if (!mapped.diagnosis_prb || mapped.diagnosis_prb.length === 0) {
             errors.push('Diagnosis PRB wajib diisi');
         }
 
-        // Tanggal Mulai PRB boleh kosong (pasien dianggap PRB Lama),
+        // Tanggal Mulai PRB boleh kosong (jenis PRB dari pengambilan pertama:
+        // Baru bila pertama ambil di bulan terakhir penelitian, selain itu Lama),
         // tetapi jika diisi harus bisa dibaca.
         if (mulai.gagal) {
             errors.push('Tanggal Mulai PRB tidak valid. Gunakan format DD/MM/YYYY (contoh: 01/08/2026).');
         } else if (!mapped.tanggal_mulai_prb) {
-            warnings.push('Tanggal Mulai PRB kosong — pasien dianggap PRB Lama');
+            warnings.push('Tanggal Mulai PRB kosong — jenis PRB dihitung dari pengambilan pertama');
         }
 
         // ── Validasi tanggal ───────────────────────────────────────────
@@ -668,7 +706,68 @@ export function validateImportData(
         });
     });
 
-    return results;
+    return gabungkanBarisGanda(pisahPerDiagnosis(results));
+}
+
+/**
+ * Satu data PRB = satu diagnosis. Sel berisi beberapa diagnosis ("HT, DM")
+ * dipisah menjadi beberapa data dengan tanggal yang sama; selanjutnya tiap
+ * diagnosis punya jadwal & kepatuhan sendiri.
+ */
+function pisahPerDiagnosis(results: ValidationResult[]): ValidationResult[] {
+    return results.flatMap((r) =>
+        r.valid && r.data.diagnosis_prb.length > 1
+            ? r.data.diagnosis_prb.map((d, i) => ({
+                ...r,
+                // No. Faktur harus unik per riwayat → diagnosis ke-2 dst. diberi akhiran
+                data: { ...r.data, diagnosis_prb: [d], no_faktur: r.data.no_faktur && i > 0 ? `${r.data.no_faktur}-${i + 1}` : r.data.no_faktur },
+                pengambilan: [...r.pengambilan],
+                errors: [...r.errors],
+                warnings: [...r.warnings],
+                dipisahDariSel: true,
+            }))
+            : [r]
+    );
+}
+
+/** Kunci diagnosis, sama dengan PasienPrb::kunciDiagnosis(): urut, huruf kecil. */
+function kunciDiagnosis(diagnosis: string[]): string {
+    return [...new Set(diagnosis.map((d) => d.trim().toLowerCase()).filter(Boolean))].sort().join('|');
+}
+
+/**
+ * Satu data PRB = NOKA + diagnosis. Pasien yang sama dengan diagnosis BERBEDA
+ * tetap menjadi baris terpisah (Tanggal Aktif, pengambilan, jadwal sendiri).
+ * Hanya baris valid dengan NOKA & diagnosis SAMA (data ganda) yang digabung:
+ * tanggal pengambilan disatukan, data kosong dilengkapi.
+ */
+function gabungkanBarisGanda(results: ValidationResult[]): ValidationResult[] {
+    const hasil: ValidationResult[] = [];
+    const induk = new Map<string, ValidationResult>();
+
+    for (const r of results) {
+        const kunci = r.valid ? `${r.data.noka.trim()}#${kunciDiagnosis(r.data.diagnosis_prb)}` : '';
+        const utama = kunci ? induk.get(kunci) : undefined;
+
+        if (!utama) {
+            hasil.push(r);
+            if (kunci) induk.set(kunci, r);
+            continue;
+        }
+
+        utama.pengambilan = [...new Set([...utama.pengambilan, ...r.pengambilan])].sort();
+        utama.data.nama_samaran ||= r.data.nama_samaran;
+        utama.data.kode_pasien ||= r.data.kode_pasien;
+        utama.data.tanggal_mulai_prb ||= r.data.tanggal_mulai_prb;
+        (utama.barisDigabung ??= []).push(r.row);
+
+        utama.warnings.push(`Digabung dengan baris ganda (NOKA & diagnosis sama): baris ${r.row}`);
+        if (r.data.fktp_asal && r.data.fktp_asal !== utama.data.fktp_asal) {
+            utama.warnings.push(`FKTP berbeda antar baris ganda: baris ${r.row} (${r.data.fktp_asal}), dipakai ${utama.data.fktp_asal}`);
+        }
+    }
+
+    return hasil;
 }
 
 /**
@@ -935,39 +1034,44 @@ function isValidDateString(
 export function exportToExcel(
     data: Record<string, any>[],
     filename: string =
-        'laporan-smart-prb.xlsx'
+        'laporan-smart-prb.xlsx',
+    sheetTambahan: { nama: string; data: Record<string, any>[] }[] = []
 ): void {
-    const worksheet =
-        XLSX.utils.json_to_sheet(
-            data
-        );
-
-    const colWidths =
-        Object.keys(
-            data[0] || {}
-        ).map((key) => ({
-            wch:
-                Math.max(
-                    key.length,
-                    ...data.map((row) =>
-                        String(
-                            row[key] ?? ''
-                        ).length
-                    )
-                ) + 2,
-        }));
-
-    worksheet['!cols'] =
-        colWidths;
-
     const workbook =
         XLSX.utils.book_new();
 
-    XLSX.utils.book_append_sheet(
-        workbook,
-        worksheet,
-        'Laporan PRB'
-    );
+    const sheets = [
+        { nama: 'Laporan PRB', data },
+        ...sheetTambahan.filter((s) => s.data.length > 0),
+    ];
+
+    for (const sheet of sheets) {
+        const worksheet =
+            XLSX.utils.json_to_sheet(
+                sheet.data
+            );
+
+        worksheet['!cols'] =
+            Object.keys(
+                sheet.data[0] || {}
+            ).map((key) => ({
+                wch:
+                    Math.max(
+                        key.length,
+                        ...sheet.data.map((row) =>
+                            String(
+                                row[key] ?? ''
+                            ).length
+                        )
+                    ) + 2,
+            }));
+
+        XLSX.utils.book_append_sheet(
+            workbook,
+            worksheet,
+            sheet.nama
+        );
+    }
 
     XLSX.writeFile(
         workbook,
@@ -980,14 +1084,15 @@ export function exportToExcel(
  * DOWNLOAD TEMPLATE IMPORT
  * =========================================================
  *
- * 5 kolom sesuai format data dari apotek (ketentuan etik penelitian):
+ * 6 kolom sesuai format data dari apotek (ketentuan etik penelitian):
  *   1. NOKA / NOKA Tersandi
- *   2. FKTP / Faskes Asal
- *   3. Diagnosis PRB
- *   4. Tanggal Mulai PRB
- *   5. Tanggal Pengambilan Obat Terakhir
+ *   2. Nama Pasien (opsional — disamarkan otomatis saat impor)
+ *   3. FKTP / Faskes Asal
+ *   4. Diagnosis PRB
+ *   5. Tanggal Mulai PRB
+ *   6. Tanggal Pengambilan Obat Terakhir
  *
- * Nama pasien & No. HP TIDAK termasuk — tidak boleh dikumpulkan.
+ * No. HP TIDAK termasuk — tidak boleh dikumpulkan.
  * - NOKA diformat sebagai TEXT agar angka 0 di depan terjaga.
  * - Kolom tanggal diberi format DD/MM/YYYY.
  * - Sheet "Petunjuk" disertakan untuk panduan petugas.
@@ -999,6 +1104,7 @@ export function downloadImportTemplate(): void {
 
     const headers = [
         'NOKA / NOKA Tersandi',
+        'Nama Pasien',
         'FKTP / Faskes Asal',
         'Diagnosis PRB',
         'Tanggal Mulai PRB',
@@ -1008,6 +1114,7 @@ export function downloadImportTemplate(): void {
     const tahunIni  = new Date().getFullYear();
     const contohRow = [
         'PRB KPMA 001',
+        'Rizka Dwi Putri',
         'Puskesmas Kecamatan X',
         'Hipertensi, DM',
         `01/01/${tahunIni}`,
@@ -1019,15 +1126,16 @@ export function downloadImportTemplate(): void {
 
     worksheet['!cols'] = [
         { wch: 24 }, // A — NOKA (TEXT)
-        { wch: 32 }, // B — FKTP
-        { wch: 36 }, // C — Diagnosis
-        { wch: 24 }, // D — Tgl Mulai PRB
-        { wch: 34 }, // E — Tgl Pengambilan Terakhir
+        { wch: 28 }, // B — Nama Pasien
+        { wch: 32 }, // C — FKTP
+        { wch: 36 }, // D — Diagnosis
+        { wch: 24 }, // E — Tgl Mulai PRB
+        { wch: 34 }, // F — Tgl Pengambilan Terakhir
     ];
 
-    // Paksa kolom NOKA (A) & tanggal (D, E) sebagai TEXT: angka 0 di depan
+    // Paksa kolom NOKA (A) & tanggal (E, F) sebagai TEXT: angka 0 di depan
     // NOKA tidak hilang dan tanggal tetap DD/MM/YYYY (tidak diubah Excel).
-    const textColumns = [0, 3, 4];
+    const textColumns = [0, 4, 5];
     for (let r = 1; r < 200; r++) {
         textColumns.forEach(c => {
             const cellRef = XLSX.utils.encode_cell({ r, c });
@@ -1059,8 +1167,14 @@ export function downloadImportTemplate(): void {
         ['KOLOM & ATURAN PENGISIAN:'],
         [''],
         ['NOKA / NOKA Tersandi',
-         'Nomor kartu pasien atau NOKA yang sudah disandikan. WAJIB DIISI.',
+         'NOKA = No. BPJS (nomor kartu pasien) atau NOKA yang sudah disandikan. WAJIB DIISI.',
+         'Judul kolom "No. BPJS", "No. Kartu BPJS", atau "Nomor BPJS" juga dikenali.',
          'Format bebas (huruf, angka, spasi). Contoh: PRB KPMA 001',
+        ],
+        ['Nama Pasien',
+         'Nama pasien. Boleh kosong.',
+         'Disamarkan otomatis saat impor: "Rizka Dwi Putri" tersimpan sebagai "R***a D*i P***i".',
+         'Nama asli tidak pernah dikirim maupun disimpan.',
         ],
         ['FKTP / Faskes Asal',
          'Nama Fasilitas Kesehatan Tingkat Pertama asal pasien. WAJIB DIISI.',
@@ -1084,8 +1198,8 @@ export function downloadImportTemplate(): void {
         ],
         [''],
         ['KETENTUAN ETIK:'],
-        ['- JANGAN mencantumkan nama pasien maupun No. HP / No. Telepon.'],
-        ['- Jika file berisi kolom tersebut, sistem mengabaikannya dan tidak menyimpannya.'],
+        ['- Nama pasien hanya disimpan dalam bentuk tersamar (huruf pertama & terakhir tiap kata).'],
+        ['- JANGAN mencantumkan No. HP / No. Telepon. Jika ada, sistem mengabaikannya.'],
         [''],
         ['CATATAN PENTING:'],
         ['- Simpan file sebagai .xlsx sebelum upload.'],

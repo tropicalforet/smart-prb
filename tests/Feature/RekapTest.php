@@ -34,7 +34,7 @@ class RekapTest extends TestCase
         Carbon::setTestNow('2026-10-20');
         $service = app(KepatuhanService::class);
 
-        // FKTP A: 2 patuh (ambil tepat jadwal) + 1 tidak patuh (overdue H+10) + 1 dalam toleransi (H+2)
+        // FKTP A: 2 patuh (ambil tepat jadwal) + 1 tidak teratur (overdue H+10) + 1 dalam toleransi (H+2)
         $service->prosesRealisasi($this->pasien(1, 'FKTP A', '2026-10-05'), '2026-10-05');
         $service->prosesRealisasi($this->pasien(2, 'FKTP A', '2026-10-06'), '2026-10-07');
         $this->pasien(3, 'FKTP A', '2026-10-10');
@@ -47,12 +47,17 @@ class RekapTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Rekap/Index')
+                // Hanya pasien yang sudah dinilai: Total = Patuh + Tidak Teratur
+                ->where('summary.total', 3)
                 ->where('summary.patuh', 2)
                 ->where('summary.tidak_patuh', 1)
-                ->where('summary.dalam_toleransi', 1)
+                ->missing('summary.dalam_toleransi')
+                ->missing('summary.belum_jatuh_tempo')
                 ->where('summary.persentase_patuh', 66.7)
-                ->where('rekapFktp', fn ($rows) => collect($rows)->firstWhere('fktp', 'FKTP A')['persentase_patuh'] === 66.7
-                    && collect($rows)->firstWhere('fktp', 'FKTP B')['persentase_patuh'] === null)
+                // FKTP B belum punya pasien yang dinilai → tidak muncul di tabel
+                ->where('rekapFktp', fn ($rows) => collect($rows)->pluck('fktp')->all() === ['FKTP A']
+                    && collect($rows)->firstWhere('fktp', 'FKTP A')['total'] === 3
+                    && collect($rows)->firstWhere('fktp', 'FKTP A')['persentase_patuh'] === 66.7)
             );
 
         Carbon::setTestNow();

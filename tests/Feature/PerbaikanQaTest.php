@@ -110,7 +110,7 @@ class PerbaikanQaTest extends TestCase
     {
         $pasien = $this->pasien();
         $data = [
-            'noka' => 'QA 001', 'fktp_asal' => 'Puskesmas B', 'diagnosis_prb' => ['Asma', 'PPOK'],
+            'noka' => 'QA 001', 'fktp_asal' => 'Puskesmas B', 'diagnosis_prb' => ['Asma'],
             'tanggal_mulai_prb' => '2026-01-01',
         ];
 
@@ -139,7 +139,7 @@ class PerbaikanQaTest extends TestCase
             return [$nilai['patuh'], $nilai['tidak_patuh']];
         };
 
-        // Jadwal 20/10 terlewat tanpa realisasi → Tidak Patuh (hasil ini ter-cache)
+        // Jadwal 20/10 terlewat tanpa realisasi → Tidak Teratur (hasil ini ter-cache)
         $this->assertSame([0, 1], $trenOktober());
 
         // Realisasi 21/10 (H+1) → Patuh; cache harus ikut diperbarui

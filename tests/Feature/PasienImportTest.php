@@ -227,22 +227,26 @@ class PasienImportTest extends TestCase
             ],
         ]);
 
+        // 'Hipertensi, DM' dipecah: satu data PRB per diagnosis
         $response->assertSessionHas('importResult', [
-            'baru' => 2, 'diperbarui' => 0, 'duplikat' => 0, 'invalid' => 0,
+            'baru' => 3, 'diperbarui' => 0, 'duplikat' => 0, 'invalid' => 0,
         ]);
+        $this->assertSame(2, PasienPrb::where('noka', 'PRB KPMA 001')->count());
 
-        $pasien = PasienPrb::where('noka', 'PRB KPMA 001')->firstOrFail();
+        $pasien = PasienPrb::cariPerDiagnosis('PRB KPMA 001', ['Hipertensi']);
         $this->assertSame('2026-09-20', $pasien->tanggal_pengambilan_terakhir->toDateString());
         $this->assertSame(1, $pasien->riwayatPengambilanObat()->count());
 
-        // Data identitas tidak boleh muncul di tabel mana pun
+        // Data identitas tidak boleh muncul di tabel mana pun. No. WhatsApp
+        // opsional hanya diisi manual lewat form, tidak pernah dari import.
         foreach (['pasien_prb', 'resep_import'] as $tabel) {
             $this->assertFalse(\Schema::hasColumn($tabel, 'nama_pasien'), "$tabel.nama_pasien");
-            $this->assertFalse(\Schema::hasColumn($tabel, 'no_whatsapp'), "$tabel.no_whatsapp");
             $dump = json_encode(\DB::table($tabel)->get());
             $this->assertStringNotContainsString('Tidak Boleh Tersimpan', $dump);
-            $this->assertStringNotContainsString('081200000000', $dump);
+            $this->assertStringNotContainsString('81200000000', $dump);
         }
+        $this->assertFalse(\Schema::hasColumn('resep_import', 'no_whatsapp'));
+        $this->assertSame(0, PasienPrb::whereNotNull('no_whatsapp')->count());
     }
 
     public function test_tambah_pasien_manual_dengan_noka_tersandi(): void
@@ -257,6 +261,6 @@ class PasienImportTest extends TestCase
         ])->assertSessionHasNoErrors()->assertRedirect(route('pasien.index'));
 
         $this->assertDatabaseHas('pasien_prb', ['noka' => 'PRB KPMA 010']);
-        $this->assertDatabaseHas('audit_logs', ['entitas_label' => 'PRB-001 (NOKA PRB KPMA 010)']);
+        $this->assertDatabaseHas('audit_logs', ['entitas_label' => 'PRB-001 · Hipertensi (NOKA PRB KPMA 010)']);
     }
 }

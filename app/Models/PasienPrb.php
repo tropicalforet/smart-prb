@@ -16,6 +16,8 @@ class PasienPrb extends Model
     protected $fillable = [
         'kode_pasien',
         'noka',   // NOKA / NOKA tersandi (pengganti No. Kartu BPJS)
+        'nama_samaran', // nama yang sudah disamarkan, mis. "R***a D*i P***i"
+        'no_whatsapp', // opsional, hanya untuk pengingat ambil obat
         'fktp_asal',
         'diagnosis_prb',
         'tanggal_mulai_prb',
@@ -28,6 +30,38 @@ class PasienPrb extends Model
         'sumber_data',
         'jenis_prb',
     ];
+
+    /**
+     * Satu NOKA bisa punya beberapa data PRB — satu per diagnosis — masing-
+     * masing dengan jadwal & kepatuhan sendiri. kunci_diagnosis (NOKA +
+     * kunci ini unik) selalu disinkronkan dari diagnosis_prb saat disimpan.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (PasienPrb $pasien) {
+            $pasien->kunci_diagnosis = self::kunciDiagnosis((array) $pasien->diagnosis_prb);
+        });
+    }
+
+    /** ["Hipertensi", "Asma"] → "asma|hipertensi" (urut, huruf kecil, tanpa ganda). */
+    public static function kunciDiagnosis(array $diagnosis): string
+    {
+        $kunci = array_values(array_unique(array_filter(array_map(
+            fn ($d) => mb_strtolower(trim((string) $d)),
+            $diagnosis
+        ))));
+        sort($kunci);
+
+        return implode('|', $kunci);
+    }
+
+    /** Data PRB milik NOKA ini untuk diagnosis yang sama persis (bila ada). */
+    public static function cariPerDiagnosis(string $noka, array $diagnosis): ?self
+    {
+        return static::where('noka', $noka)
+            ->where('kunci_diagnosis', self::kunciDiagnosis($diagnosis))
+            ->first();
+    }
 
     protected $casts = [
         'tanggal_mulai_prb' => 'date',
@@ -56,16 +90,15 @@ class PasienPrb extends Model
         'Epilepsi',
         'Skizofrenia',
         'SLE',
-        'Lainnya',
     ];
 
-    public const STATUS_OPTIONS = ['Aktif', 'Pasif'];
+    /** Pasif & Meninggal keluar dari pemantauan (tidak dinilai kepatuhannya). */
+    public const STATUS_OPTIONS = ['Aktif', 'Pasif', 'Meninggal'];
 
     public const JENIS_PRB_OPTIONS = ['Baru', 'Lama'];
 
     public const ALASAN_PASIF_OPTIONS = [
         'Rujuk Balik ke RS',
-        'Meninggal Dunia',
         'Pindah Faskes',
         'Menolak Program',
         'Pasien Mandiri',
@@ -95,11 +128,67 @@ class PasienPrb extends Model
     /**
      * Label pasien untuk audit log & pesan UI.
      * Sesuai ketentuan etik, nama pasien tidak disimpan — pasien
-     * diidentifikasi dengan kode pasien + NOKA.
+     * diidentifikasi dengan kode pasien + diagnosis + NOKA. Diagnosis wajib
+     * ikut karena satu kode (ID_PRB) bisa punya beberapa data PRB.
      */
     public function identitas(): string
     {
-        return "{$this->kode_pasien} (NOKA {$this->noka})";
+        $diagnosis = implode(', ', array_filter((array) $this->diagnosis_prb));
+
+        return $this->kode_pasien
+            . ($diagnosis !== '' ? " · {$diagnosis}" : '')
+            . " (NOKA {$this->noka})";
+    }
+
+    /**
+     * Samarkan nama: tiap kata hanya huruf pertama & terakhir yang terlihat.
+     * "Rizka Dwi Putri" → "R***a D*i P***i". Kata 2 huruf → "A*".
+     * Aman diulang (nama yang sudah disamarkan tidak berubah). Kosong → null.
+     */
+    public static function samarkanNama(?string $nama): ?string
+    {
+        $nama = trim((string) preg_replace('/\s+/u', ' ', (string) $nama));
+
+        if ($nama === '') {
+            return null;
+        }
+
+        $kata = array_map(function (string $k): string {
+            $huruf = mb_str_split($k);
+            $n     = count($huruf);
+
+            return match (true) {
+                $n <= 1  => $k,
+                $n === 2 => $huruf[0] . '*',
+                default  => $huruf[0] . str_repeat('*', $n - 2) . $huruf[$n - 1],
+            };
+        }, explode(' ', $nama));
+
+        return mb_substr(implode(' ', $kata), 0, 150);
+    }
+
+    /**
+     * Rapikan No. WhatsApp ke format internasional tanpa tanda:
+     * "0812-3456-7890" / "+62 812 3456 7890" / "812..." → "6281234567890".
+     * Kosong → null.
+     */
+    public static function normalisasiNoWhatsapp(?string $nomor): ?string
+    {
+        $angka = preg_replace('/\D/', '', (string) $nomor);
+
+        if ($angka === '') {
+            return null;
+        }
+
+        if (str_starts_with($angka, '0')) {
+            return '62' . substr($angka, 1);
+        }
+
+        if (str_starts_with($angka, '8')) {
+            return '62' . $angka;
+        }
+
+        return $angka;
     }
 
     /**

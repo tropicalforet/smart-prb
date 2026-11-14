@@ -42,13 +42,13 @@ class PasienSortTest extends TestCase
         return $kode;
     }
 
-    public function test_default_kode_pasien_naik_secara_natural(): void
+    public function test_kode_pasien_naik_secara_natural(): void
     {
         $this->pasien('PRB-1000', '2026-01-01');
         $this->pasien('PRB-999', '2026-02-01');
         $this->pasien('PRB-2', '2026-03-01');
 
-        $this->assertSame(['PRB-2', 'PRB-999', 'PRB-1000'], $this->urutanKode(''));
+        $this->assertSame(['PRB-2', 'PRB-999', 'PRB-1000'], $this->urutanKode('sort_by=kode_pasien'));
         $this->assertSame(['PRB-1000', 'PRB-999', 'PRB-2'], $this->urutanKode('sort_by=kode_pasien&sort_order=desc'));
     }
 

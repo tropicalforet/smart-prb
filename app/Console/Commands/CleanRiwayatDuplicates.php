@@ -107,7 +107,7 @@ class CleanRiwayatDuplicates extends Command
             $batasAkhir = $jadwalTarget->copy()->addDays(3);
             $statusBaru = $tglPengambilan->between($batasAwal, $batasAkhir, true)
                 ? 'Patuh'
-                : 'Tidak Patuh';
+                : 'Tidak Teratur';
 
             if ($riwayat->selisih_hari !== $selisihHari || $riwayat->status_kepatuhan !== $statusBaru) {
                 $riwayat->update([

@@ -44,6 +44,7 @@ Route::middleware('auth')->group(function () {
     Route::post('pasien/import/batch', [PasienPrbController::class, 'import'])->name('pasien.import');
     Route::post('pasien/hapus-massal', [PasienPrbController::class, 'destroyBulk'])->name('pasien.destroy-bulk');
     Route::get('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export');
+    Route::post('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export.terpilih');
 
     // Tindak Lanjut
     Route::post('pasien/{pasien}/tindak-lanjut', [TindakLanjutController::class, 'store'])->name('tindak-lanjut.store');

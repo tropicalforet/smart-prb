@@ -23,7 +23,7 @@ class RekapKepatuhanController extends Controller
         $filterFktp = $request->input('filter_fktp', '');
         $filterKepatuhan = $request->input('filter_kepatuhan', '');
         // Tanggal evaluasi kita default ke hari ini, atau bisa di set dari filter
-        $tanggalEvaluasi = $request->input('tanggal_evaluasi', Carbon::today()->toDateString());
+        $tanggalEvaluasi = $request->input('tanggal_evaluasi', KepatuhanService::tanggalEvaluasiBawaan());
 
         // Rekap hanya untuk pasien Aktif — pasien Pasif sudah keluar dari
         // pemantauan, jadi tidak ditampilkan maupun dihitung di total.
@@ -57,6 +57,11 @@ class RekapKepatuhanController extends Controller
             ];
         });
 
+        // Rekap hanya memuat pasien yang sudah dinilai (Patuh / Tidak Teratur).
+        // Dalam Toleransi, Belum Jatuh Tempo, dan Tidak Ada Transaksi belum
+        // atau tidak dapat dinilai, jadi tidak ditampilkan maupun dihitung.
+        $allPasien = $allPasien->whereIn('status_kepatuhan', KepatuhanService::STATUS_DINILAI);
+
         // 2. Filter Kepatuhan (setelah perhitungan)
         if ($filterKepatuhan) {
             $allPasien = $allPasien->filter(function ($p) use ($filterKepatuhan) {
@@ -64,45 +69,23 @@ class RekapKepatuhanController extends Controller
             });
         }
 
-        // 3. Agregasi Global
-        //
-        // $totalPasien = seluruh evaluasi dalam scope filter yang aktif,
-        // KECUALI 'Tidak Ada Transaksi' — pasien yang belum bergabung di
-        // periode ini tidak boleh masuk sampel evaluasi sama sekali.
-        // Memasukkan mereka akan menggelembungkan total dan mendistorsi
-        // persentase kepatuhan.
-        //
-        // 'Belum Jatuh Tempo' TETAP dihitung dalam total — mereka adalah
-        // siklus aktif yang sedang berjalan, bukan siklus yang "tidak ada".
-        // Persentase kepatuhan dihitung terpisah dari denominator yang tepat
-        // (hanya Patuh + Tidak Patuh sebagai yang sudah dapat dievaluasi final).
-        $totalBelumJatuhTempo  = $allPasien->where('status_kepatuhan', 'Belum Jatuh Tempo')->count();
-        $totalPatuh            = $allPasien->where('status_kepatuhan', 'Patuh')->count();
-        $totalToleransi        = $allPasien->where('status_kepatuhan', 'Dalam Toleransi')->count();
-        $totalTidakPatuh       = $allPasien->where('status_kepatuhan', 'Tidak Patuh')->count();
-        $totalTidakAdaTransaksi = $allPasien->where('status_kepatuhan', 'Tidak Ada Transaksi')->count();
-
-        // Total = seluruh evaluasi kecuali 'Tidak Ada Transaksi'
-        // agar konsisten dengan sum kolom Total di tabel FKTP.
-        $totalPasien = $allPasien->count() - $totalTidakAdaTransaksi;
+        // 3. Agregasi Global — Total = Patuh + Tidak Teratur
+        $totalPatuh      = $allPasien->where('status_kepatuhan', 'Patuh')->count();
+        $totalTidakPatuh = $allPasien->where('status_kepatuhan', 'Tidak Teratur')->count();
+        $totalPasien     = $allPasien->count();
         // 4. Agregasi per FKTP
         $rekapFktpData = [];
         $grouped = $allPasien->groupBy('fktp');
         
         foreach ($grouped as $fktp => $patients) {
-            // Kecualikan 'Tidak Ada Transaksi' dari total per FKTP
-            // agar konsisten dengan total global di atas.
-            $tidakAdaTransaksi = $patients->where('status_kepatuhan', 'Tidak Ada Transaksi')->count();
-            $patuhFktp         = $patients->where('status_kepatuhan', 'Patuh')->count();
-            $tidakPatuhFktp    = $patients->where('status_kepatuhan', 'Tidak Patuh')->count();
+            $patuhFktp      = $patients->where('status_kepatuhan', 'Patuh')->count();
+            $tidakPatuhFktp = $patients->where('status_kepatuhan', 'Tidak Teratur')->count();
             $rekapFktpData[] = [
                 'fktp'             => $fktp ?: 'Tanpa FKTP',
-                'total'            => $patients->count() - $tidakAdaTransaksi,
+                'total'            => $patients->count(),
                 'patuh'            => $patuhFktp,
-                'dalam_toleransi'  => $patients->where('status_kepatuhan', 'Dalam Toleransi')->count(),
                 'tidak_patuh'      => $tidakPatuhFktp,
                 'persentase_patuh' => KepatuhanService::persentasePatuh($patuhFktp, $tidakPatuhFktp),
-                'belum_jatuh_tempo'=> $patients->where('status_kepatuhan', 'Belum Jatuh Tempo')->count(),
             ];
         }
 
@@ -133,11 +116,7 @@ class RekapKepatuhanController extends Controller
             'summary' => [
                 'total'             => $totalPasien,
                 'patuh'             => $totalPatuh,
-                'dalam_toleransi'   => $totalToleransi,
                 'tidak_patuh'       => $totalTidakPatuh,
-                // Pasien belum melewati batas penilaian (sebelum H-3)
-                // Tidak masuk denominator persentase kepatuhan final.
-                'belum_jatuh_tempo' => $totalBelumJatuhTempo,
                 'persentase_patuh'  => KepatuhanService::persentasePatuh($totalPatuh, $totalTidakPatuh),
             ],
             'rekapFktp' => $rekapFktpData,
@@ -160,7 +139,7 @@ class RekapKepatuhanController extends Controller
         $filterPeriode = $request->input('filter_periode', '');
         $filterFktp = $request->input('filter_fktp', '');
         $filterKepatuhan = $request->input('filter_kepatuhan', '');
-        $tanggalEvaluasi = $request->input('tanggal_evaluasi', Carbon::today()->toDateString());
+        $tanggalEvaluasi = $request->input('tanggal_evaluasi', KepatuhanService::tanggalEvaluasiBawaan());
 
         // Generate filename dengan timestamp dan filter info
         $timestamp = Carbon::now()->format('Ymd_His');

@@ -95,7 +95,7 @@ class RealisasiPrbLamaTest extends TestCase
         $this->assertSame('2026-02-08', $pasien->tanggal_pengambilan_terakhir->toDateString());
         $this->assertSame('2026-03-10', $pasien->tanggal_jadwal_berikutnya->toDateString());
         $this->assertSame(
-            ['ambil' => '2026-02-08', 'target' => '2026-02-01', 'selisih' => 7, 'status' => 'Tidak Patuh'],
+            ['ambil' => '2026-02-08', 'target' => '2026-02-01', 'selisih' => 7, 'status' => 'Tidak Teratur'],
             $this->riwayat($pasien)[1]
         );
 

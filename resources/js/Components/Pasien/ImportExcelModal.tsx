@@ -2,10 +2,11 @@ import { useState, useRef, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
-import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info, TriangleAlert, CalendarDays } from 'lucide-react';
+import { csrfHeaders } from '@/lib/csrf';
+import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info, TriangleAlert, CalendarDays, Download } from 'lucide-react';
 import {
     parseExcelFile, validateImportData, buildImportPayload, kolomBulan,
-    ValidationResult, ParseMeta, downloadImportTemplate,
+    ValidationResult, ParseMeta, downloadImportTemplate, exportToExcel,
 } from '@/lib/excel-utils';
 
 interface Props {
@@ -27,14 +28,26 @@ interface HasilImpor {
  */
 const UKURAN_POTONGAN = 500;
 
-/** CSRF dari cookie XSRF-TOKEN (selalu terbaru), fallback meta tag. */
-function csrfHeaders(): Record<string, string> {
-    const xsrf = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='))?.split('=')[1];
-    return xsrf
-        ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) }
-        : { 'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '' };
+/**
+ * Kelompok alasan untuk ringkasan buffer: bagian sebelum ":" (bagian setelahnya
+ * berisi tanggal/kolom yang berbeda-beda per baris) dan tanpa saran format.
+ */
+function kelompokAlasan(teks: string): string {
+    return teks.split(':')[0].split('. Gunakan')[0].replace(/^Kolom "[^"]*"/, 'Kolom').trim();
 }
 
+function hitungAlasan(daftar: string[][]): [string, number][] {
+    const jumlah = new Map<string, number>();
+    for (const alasanBaris of daftar) {
+        // Satu baris dihitung sekali per alasan
+        for (const a of new Set(alasanBaris.map(kelompokAlasan))) {
+            jumlah.set(a, (jumlah.get(a) ?? 0) + 1);
+        }
+    }
+    return [...jumlah.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+/** CSRF dari cookie XSRF-TOKEN (selalu terbaru), fallback meta tag. */
 const fmtTgl = (iso: string) => iso.split('-').reverse().join('/');
 
 export function ImportExcelModal({ isOpen, onClose }: Props) {
@@ -147,6 +160,10 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
     };
 
     const validCount     = results.filter(r => r.valid).length;
+    const jumlahDigabung = results.reduce((n, r) => n + (r.barisDigabung?.length ?? 0), 0);
+    // Baris Excel yang sel diagnosisnya berisi beberapa diagnosis (dipisah per diagnosis)
+    const barisDipisah = new Set(results.filter(r => r.dipisahDariSel).map(r => `${r.sheet}#${r.row}`)).size;
+    const tambahanDariPisah = results.filter(r => r.dipisahDariSel).length - barisDipisah;
     const invalidCount   = results.filter(r => !r.valid).length;
     const peringatanCount = results.filter(r => r.valid && r.warnings.length > 0).length;
 
@@ -157,6 +174,25 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
     const ditampilkan = hanyaPerluDicek
         ? results.filter(r => !r.valid || r.warnings.length > 0)
         : results;
+
+    // Rincian buffer: alasan baris tidak valid & yang perlu dicek
+    const alasanTidakValid = useMemo(() => hitungAlasan(results.filter(r => !r.valid).map(r => r.errors)), [results]);
+    const alasanPerluDicek = useMemo(() => hitungAlasan(results.filter(r => r.valid && r.warnings.length > 0).map(r => r.warnings)), [results]);
+
+    const unduhRincian = () => {
+        const baris = results
+            .filter(r => !r.valid || r.warnings.length > 0)
+            .map(r => ({
+                'Sheet': r.sheet,
+                'Baris': r.row,
+                'NOKA': r.data.noka || '-',
+                'Nama Pasien': r.data.nama_samaran || '-',
+                'FKTP Asal': r.data.fktp_asal || '-',
+                'Status': r.valid ? 'Perlu Dicek (tetap diimpor)' : 'Tidak Valid (tidak diimpor)',
+                'Keterangan': (r.valid ? r.warnings : r.errors).join('; '),
+            }));
+        exportToExcel(baris, `Rincian_Validasi_Import_${new Date().toLocaleDateString('en-CA')}.xlsx`);
+    };
 
     return (
         <Modal isOpen={isOpen} onClose={handleClose} title="Import Data Pasien & Resep PRB (Excel)" maxWidth="4xl">
@@ -333,6 +369,46 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                             )}
                         </div>
 
+                        {/* Rincian buffer per alasan */}
+                        {(alasanTidakValid.length > 0 || alasanPerluDicek.length > 0) && (
+                            <div className="border border-slate-200 rounded-lg p-3 mb-4 text-xs">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <span className="font-semibold text-slate-700">
+                                        Rincian data buffer: {results.length + jumlahDigabung - tambahanDariPisah} baris Excel — {validCount} data valid (per diagnosis){barisDipisah > 0 ? `, ${barisDipisah} baris berisi beberapa diagnosis dipisah` : ''}{jumlahDigabung > 0 ? `, ${jumlahDigabung} baris ganda digabung` : ''}, {invalidCount} tidak memenuhi syarat
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={unduhRincian}
+                                        className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 font-medium"
+                                    >
+                                        <Download className="w-3.5 h-3.5" /> Unduh rincian (Excel)
+                                    </button>
+                                </div>
+                                <div className="grid sm:grid-cols-2 gap-3">
+                                    {alasanTidakValid.length > 0 && (
+                                        <div>
+                                            <div className="font-medium text-rose-700 mb-1">Tidak valid (tidak diimpor)</div>
+                                            <ul className="space-y-0.5 text-slate-600">
+                                                {alasanTidakValid.map(([alasan, n]) => (
+                                                    <li key={alasan} className="flex justify-between gap-2"><span>{alasan}</span><span className="font-mono text-rose-700">{n}</span></li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    {alasanPerluDicek.length > 0 && (
+                                        <div>
+                                            <div className="font-medium text-amber-700 mb-1">Perlu dicek (tetap diimpor)</div>
+                                            <ul className="space-y-0.5 text-slate-600">
+                                                {alasanPerluDicek.map(([alasan, n]) => (
+                                                    <li key={alasan} className="flex justify-between gap-2"><span>{alasan}</span><span className="font-mono text-amber-700">{n}</span></li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Info anti-duplikasi */}
                         <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-xs text-sky-800 flex items-start gap-2 mb-4">
                             <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
@@ -340,7 +416,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                 <span className="font-semibold">Deteksi otomatis &amp; anti-duplikasi:</span>{' '}
                                 Duplikasi dicek via <span className="font-medium">No. Faktur</span> (UPDATE jika koreksi),
                                 lalu <span className="font-medium">NOKA + tanggal</span> — mengimpor ulang file yang sama aman.
-                                Kolom Nama Pasien &amp; No. HP (jika ada di file) <span className="font-medium">diabaikan</span> sesuai ketentuan etik.
+                                Kolom Nama Pasien <span className="font-medium">disamarkan otomatis</span> (mis. R***a D*i P***i) sebelum dikirim; kolom No. HP <span className="font-medium">diabaikan</span> sesuai ketentuan etik.
                                 Baris <span className="font-medium">Perlu Dicek</span> tetap diimpor; periksa keterangannya.
                             </div>
                         </div>
@@ -365,6 +441,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                             <th className="px-3 py-2 border-b">Baris</th>
                                             {multiSheet && <th className="px-3 py-2 border-b whitespace-nowrap">Sheet</th>}
                                             <th className="px-3 py-2 border-b">NOKA</th>
+                                            <th className="px-3 py-2 border-b whitespace-nowrap">Nama (tersamar)</th>
                                             <th className="px-3 py-2 border-b">FKTP Asal</th>
                                             <th className="px-3 py-2 border-b">Diagnosis PRB</th>
                                             <th className="px-3 py-2 border-b whitespace-nowrap">Mulai PRB</th>
@@ -380,6 +457,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                                     <td className="px-3 py-2 text-xs text-blue-700 font-medium whitespace-nowrap">{r.sheet}</td>
                                                 )}
                                                 <td className="px-3 py-2 text-xs font-mono text-slate-800 whitespace-nowrap">{r.data.noka || '-'}</td>
+                                                <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{r.data.nama_samaran || '-'}</td>
                                                 <td className="px-3 py-2 text-xs text-slate-600">{r.data.fktp_asal || '-'}</td>
                                                 <td className="px-3 py-2 text-xs text-slate-700 font-medium">
                                                     {r.data.diagnosis_prb?.length > 0 ? r.data.diagnosis_prb.join(', ') : '-'}

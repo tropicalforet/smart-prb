@@ -52,6 +52,15 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    'custom' => [
+        'diagnosis_prb' => [
+            'max' => 'Satu data PRB hanya untuk satu diagnosis. Tambahkan diagnosis lain lewat tombol Tambah.',
+        ],
+        'no_whatsapp' => [
+            'regex' => 'Format No. WhatsApp tidak valid. Contoh: 081234567890.',
+        ],
+    ],
+
     'attributes' => [
         'alasan_pasif'                 => 'alasan pasif',
         'catatan'                      => 'catatan',
@@ -61,6 +70,7 @@ return [
         'fktp_asal'                    => 'FKTP asal',
         'ids'                          => 'pasien yang dipilih',
         'ids.*'                        => 'pasien yang dipilih',
+        'no_whatsapp'                  => 'No. WhatsApp',
         'noka'                         => 'NOKA',
         'password'                     => 'password baru',
         'password_lama'                => 'password lama',

@@ -72,6 +72,22 @@ function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: 
     return <>{display}</>;
 }
 
+/** Tooltip grafik per FKTP: % kepatuhan lalu jumlah Patuh & Tidak Teratur. */
+function TooltipFktp({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) {
+    if (!active || !payload?.length) return null;
+    const f = payload[0].payload as { patuh: number; tidak_patuh: number; persentase: number };
+    const dinilai = f.patuh + f.tidak_patuh;
+
+    return (
+        <div className="bg-white rounded-xl px-3 py-2 text-[13px]" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
+            <p className="text-slate-700 mb-1">{label}</p>
+            <p className="text-teal-700">Kepatuhan : {dinilai > 0 ? `${f.persentase}%` : '-'}</p>
+            <p className="text-emerald-600">Patuh : {f.patuh}</p>
+            <p className="text-rose-600">Tidak Teratur : {f.tidak_patuh}</p>
+        </div>
+    );
+}
+
 export default function Dashboard({
     statistik,
     trenKepatuhan,
@@ -135,21 +151,22 @@ export default function Dashboard({
             filterKepatuhan: 'Patuh',
         },
         {
-            title: 'Tidak Patuh',
+            title: 'Tidak Teratur',
             value: statistik.tidak_patuh,
             subtitle: 'Butuh tindak lanjut',
             icon: AlertTriangle,
             gradient: 'from-rose-500 to-rose-600',
             shadowColor: 'shadow-rose-500/25',
-            filterKepatuhan: 'Tidak Patuh',
+            filterKepatuhan: 'Tidak Teratur',
         },
     ];
 
     // Donut chart data
     const donutData = [
         { name: 'Patuh',       value: statistik.patuh,          color: '#10b981' },
-        { name: 'Tidak Patuh', value: statistik.tidak_patuh,    color: '#f43f5e' },
+        { name: 'Tidak Teratur', value: statistik.tidak_patuh,    color: '#f43f5e' },
     ].filter(d => d.value > 0);
+
 
     return (
         <AppLayout title="Dashboard">
@@ -313,11 +330,11 @@ export default function Dashboard({
                                     height={60}
                                 />
                                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }}
-                                />
+                                {/* % kepatuhan muncul saat hover, seperti grafik tren:
+                                    Patuh ÷ (Patuh + Tidak Teratur), sama dengan Rekap Kepatuhan */}
+                                <Tooltip content={<TooltipFktp />} cursor={{ fill: '#f8fafc' }} />
                                 <Bar dataKey="patuh" name="Patuh" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="tidak_patuh" name="Tidak Patuh" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="tidak_patuh" name="Tidak Teratur" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -335,7 +352,10 @@ export default function Dashboard({
             >
                 <div className="flex items-center justify-between mb-4">
                     <div>
-                        <h3 className="text-sm font-semibold text-slate-700">Tren Kepatuhan 12 Bulan Terakhir</h3>
+                        <h3 className="text-sm font-semibold text-slate-700">
+                            {/* Rentang mengikuti data tren: periode penelitian (mis. Mar 2026 – Mei 2026) atau 12 bulan */}
+                            Tren Kepatuhan{trenKepatuhan.length > 0 ? ` ${trenKepatuhan[0].bulan} – ${trenKepatuhan[trenKepatuhan.length - 1].bulan}` : ''}
+                        </h3>
                         <p className="text-xs text-slate-400 mt-0.5">Persentase pasien patuh per siklus bulanan (sama dengan KPI saat filter periode dipilih)</p>
                     </div>
                 </div>
@@ -379,7 +399,7 @@ export default function Dashboard({
                                 formatter={(value, name) => {
                                     if (name === 'persentase') return [value === null ? '-' : `${value}%`, 'Kepatuhan'];
                                     if (name === 'patuh')      return [value, 'Patuh'];
-                                    if (name === 'tidak_patuh') return [value, 'Tidak Patuh'];
+                                    if (name === 'tidak_patuh') return [value, 'Tidak Teratur'];
                                     return [value, name];
                                 }}
                             />
@@ -387,11 +407,11 @@ export default function Dashboard({
                                 formatter={(value) => {
                                     if (value === 'persentase') return <span className="text-xs text-slate-600">% Kepatuhan</span>;
                                     if (value === 'patuh')      return <span className="text-xs text-slate-600">Patuh</span>;
-                                    if (value === 'tidak_patuh') return <span className="text-xs text-slate-600">Tidak Patuh</span>;
+                                    if (value === 'tidak_patuh') return <span className="text-xs text-slate-600">Tidak Teratur</span>;
                                     return value;
                                 }}
                             />
-                            {/* Batang patuh & tidak patuh sebagai konteks */}
+                            {/* Batang patuh & tidak teratur sebagai konteks */}
                             <Bar yAxisId="jumlah" dataKey="patuh"       name="patuh"       fill="#10b981" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
                             <Bar yAxisId="jumlah" dataKey="tidak_patuh" name="tidak_patuh" fill="#f43f5e" fillOpacity={0.2} radius={[3, 3, 0, 0]} />
                             {/* Garis persentase kepatuhan — axis utama */}

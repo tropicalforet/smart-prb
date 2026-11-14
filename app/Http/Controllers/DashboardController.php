@@ -17,7 +17,8 @@ class DashboardController extends Controller
 
     public function index(Request $request)
     {
-        $tanggalEvaluasi = now()->toDateString();
+        // Akhir periode penelitian (31/05/2026), bukan hari ini
+        $tanggalEvaluasi = KepatuhanService::tanggalEvaluasiBawaan();
         $filterFktp      = $request->input('filter_fktp', '');
         $filterPeriode   = $request->input('filter_periode', '');
 

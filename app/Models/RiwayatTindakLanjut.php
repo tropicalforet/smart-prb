@@ -18,6 +18,7 @@ class RiwayatTindakLanjut extends Model
         'tanggal_jam',
         'petugas',
         'tindakan',
+        'kategori',
         'catatan',
         'update_realisasi_otomatis',
     ];
@@ -30,8 +31,15 @@ class RiwayatTindakLanjut extends Model
     public const TINDAKAN_OPTIONS = [
         'Sudah mengambil obat',
         'Belum mengambil obat',
-        'Tidak dapat dihubungi',
-        'Kendala pengambilan obat',
+    ];
+
+    /** Kategori tindak lanjut. "Meninggal" otomatis mengubah status pasien. */
+    public const KATEGORI_OPTIONS = [
+        'Kontak langsung',
+        'Koordinasi FKTP',
+        'Meninggal',
+        'Kembali ke FKRTL',
+        'Lain-lain',
     ];
 
     public function pasienPrb(): BelongsTo
