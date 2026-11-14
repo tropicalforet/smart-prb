@@ -1177,7 +1177,9 @@ class KepatuhanService
 
         $semuaPasien = $query->get();
 
-        $totalPasien = $semuaPasien->count();
+        // Total Pasien = orang (NOKA unik); satu pasien bisa punya beberapa
+        // data PRB (satu per diagnosis). Kepatuhan tetap dinilai per diagnosis.
+        $totalPasien = PasienPrb::jumlahPasienUnik($semuaPasien);
         $pasienAktif = $semuaPasien->where('status', 'Aktif');
         $pasienPasif = $semuaPasien->where('status', 'Pasif');
         $totalAktif  = $pasienAktif->count();
@@ -1276,6 +1278,7 @@ class KepatuhanService
 
         return [
             'total_pasien'      => $totalPasien,
+            'total_diagnosis'   => $semuaPasien->count(),
             'total_aktif'       => $totalAktif,
             'total_pasif'       => $pasienPasif->count(),
             'total_meninggal'   => $semuaPasien->where('status', 'Meninggal')->count(),

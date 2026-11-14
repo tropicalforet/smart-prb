@@ -17,6 +17,7 @@ import { ImportExcelModal } from '@/Components/Pasien/ImportExcelModal';
 import { exportToExcel } from '@/lib/excel-utils';
 import { exportToPdf } from '@/lib/pdf-utils';
 import { csrfHeaders } from '@/lib/csrf';
+import { jumlahPasienUnik } from '@/lib/pasien-unik';
 import { Menu, MenuButton, MenuItem, MenuItems, Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import {
     Search,
@@ -279,7 +280,8 @@ export default function PasienIndex({
             acc[st] = (acc[st] ?? 0) + 1;
             return acc;
         }, {});
-        return `Jumlah pasien: ${rows.length}  ·  ` + Object.entries(jumlah).map(([st, n]) => `${st}: ${n}`).join('  ·  ');
+        const pasienUnik = jumlahPasienUnik(rows.map((row) => row['NOKA']));
+        return `Jumlah pasien: ${pasienUnik} (${rows.length} data diagnosis)  ·  ` + Object.entries(jumlah).map(([st, n]) => `${st}: ${n}`).join('  ·  ');
     };
 
     // Export data — Excel atau PDF, isi sama (sesuai filter yang aktif)
@@ -1277,7 +1279,10 @@ export default function PasienIndex({
 
                 {pasienList.length > 0 && (
                     <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-sm text-slate-500">
-                        <span>Menampilkan {pasienList.length} pasien</span>
+                        <span>
+                            Menampilkan {pasienList.length} data diagnosis
+                            {' · '}{jumlahPasienUnik(pasienList.map((p) => p.noka))} pasien
+                        </span>
                         {selectedIds.size > 0 && (
                             <span className="text-teal-600 font-medium">
                                 {selectedIds.size} dipilih

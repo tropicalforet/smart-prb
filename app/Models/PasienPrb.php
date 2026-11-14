@@ -99,6 +99,27 @@ class PasienPrb extends Model
     ];
 
     /**
+     * Jumlah pasien unik (orang) berdasarkan NOKA. Satu pasien dengan beberapa
+     * diagnosis punya beberapa data PRB, tetapi dihitung satu kali. Data tanpa
+     * NOKA tidak bisa dipastikan sama/berbeda, jadi dihitung per data.
+     *
+     * @param  iterable<PasienPrb|array|string|null>  $data  model, baris ['noka' => ...], atau NOKA
+     */
+    public static function jumlahPasienUnik(iterable $data): int
+    {
+        $unik = [];
+        $tanpaNoka = 0;
+
+        foreach ($data as $item) {
+            $noka = is_string($item) || $item === null ? $item : data_get($item, 'noka');
+            $kunci = strtoupper(preg_replace('/\s+/', '', (string) $noka));
+            $kunci === '' ? $tanpaNoka++ : $unik[$kunci] = true;
+        }
+
+        return count($unik) + $tanpaNoka;
+    }
+
+    /**
      * Nama baku salah satu dari 9 diagnosis PRB ("dm", "HT", "asma" →
      * "Diabetes Melitus", "Hipertensi", "Asma"); null bila di luar 9 diagnosis.
      */

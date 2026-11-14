@@ -52,6 +52,7 @@ class RekapKepatuhanController extends Controller
                 $kepatuhan = $this->kepatuhanService->tentukanStatusKepatuhan($pasien, $tanggalEvaluasi);
             }
             return [
+                'noka' => $pasien->noka,
                 'fktp' => $pasien->fktp_asal,
                 'status_kepatuhan' => $kepatuhan['status']
             ];
@@ -69,10 +70,12 @@ class RekapKepatuhanController extends Controller
             });
         }
 
-        // 3. Agregasi Global — Total = Patuh + Tidak Teratur
+        // 3. Agregasi Global — Patuh & Tidak Teratur dihitung per diagnosis
+        // (jadwal obat tiap diagnosis terpisah); Total Pasien = orang (NOKA
+        // unik), jadi pasien dengan dua diagnosis dihitung satu kali.
         $totalPatuh      = $allPasien->where('status_kepatuhan', 'Patuh')->count();
         $totalTidakPatuh = $allPasien->where('status_kepatuhan', 'Tidak Teratur')->count();
-        $totalPasien     = $allPasien->count();
+        $totalPasien     = PasienPrb::jumlahPasienUnik($allPasien);
         // 4. Agregasi per FKTP
         $rekapFktpData = [];
         $grouped = $allPasien->groupBy('fktp');
@@ -82,7 +85,8 @@ class RekapKepatuhanController extends Controller
             $tidakPatuhFktp = $patients->where('status_kepatuhan', 'Tidak Teratur')->count();
             $rekapFktpData[] = [
                 'fktp'             => $fktp ?: 'Tanpa FKTP',
-                'total'            => $patients->count(),
+                'total'            => PasienPrb::jumlahPasienUnik($patients),
+                'total_diagnosis'  => $patients->count(),
                 'patuh'            => $patuhFktp,
                 'tidak_patuh'      => $tidakPatuhFktp,
                 'persentase_patuh' => KepatuhanService::persentasePatuh($patuhFktp, $tidakPatuhFktp),
@@ -115,6 +119,7 @@ class RekapKepatuhanController extends Controller
         return Inertia::render('Rekap/Index', [
             'summary' => [
                 'total'             => $totalPasien,
+                'total_diagnosis'   => $allPasien->count(),
                 'patuh'             => $totalPatuh,
                 'tidak_patuh'       => $totalTidakPatuh,
                 'persentase_patuh'  => KepatuhanService::persentasePatuh($totalPatuh, $totalTidakPatuh),

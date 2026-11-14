@@ -135,7 +135,8 @@ export default function Dashboard({
         {
             title: 'Total Pasien',
             value: statistik.total_pasien,
-            subtitle: 'Seluruh pasien terdaftar',
+            // Pasien unik (NOKA); satu pasien bisa punya beberapa diagnosis
+            subtitle: `Pasien unik · ${statistik.total_diagnosis} data diagnosis`,
             icon: Users,
             gradient: 'from-slate-600 to-slate-700',
             shadowColor: 'shadow-slate-500/20',

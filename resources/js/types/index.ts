@@ -93,7 +93,8 @@ export interface RiwayatTindakLanjut {
 }
 
 export interface DashboardStats {
-    total_pasien: number;
+    total_pasien: number; // pasien unik (NOKA)
+    total_diagnosis: number; // data PRB (satu per diagnosis)
     total_aktif: number;
     total_pasif: number;
     total_meninggal: number;
