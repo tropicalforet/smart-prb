@@ -963,6 +963,26 @@ export default function PasienIndex({
 
             {/* Data Table */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between text-sm text-slate-500">
+                    <span>
+                        {(() => {
+                            // Baris = pasien kecuali pasien dengan diagnosis bertanggal berbeda
+                            const pasien = jumlahPasienUnik(pasienList.map((p) => p.noka));
+                            return pasienList.length === pasien ? (
+                                <>Total <span className="font-semibold text-slate-800">{pasien}</span> pasien</>
+                            ) : (
+                                <>
+                                    Total <span className="font-semibold text-slate-800">{pasien}</span> pasien · {pasienList.length} baris
+                                </>
+                            );
+                        })()}
+                    </span>
+                    {selectedIds.size > 0 && (
+                        <span className="text-teal-600 font-medium">
+                            {selectedIds.size} dipilih
+                        </span>
+                    )}
+                </div>
                 <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
                     <table className="w-full min-w-[1600px] text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider sticky top-0 z-10">
@@ -1295,25 +1315,6 @@ export default function PasienIndex({
                         </tbody>
                     </table>
                 </div>
-
-                {pasienList.length > 0 && (
-                    <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-sm text-slate-500">
-                        <span>
-                            {(() => {
-                                // Baris = pasien kecuali pasien dengan diagnosis bertanggal berbeda
-                                const pasien = jumlahPasienUnik(pasienList.map((p) => p.noka));
-                                return pasienList.length === pasien
-                                    ? `Menampilkan ${pasien} pasien`
-                                    : `Menampilkan ${pasienList.length} baris · ${pasien} pasien`;
-                            })()}
-                        </span>
-                        {selectedIds.size > 0 && (
-                            <span className="text-teal-600 font-medium">
-                                {selectedIds.size} dipilih
-                            </span>
-                        )}
-                    </div>
-                )}
             </div>
 
             {/* MODAL TAMBAH PASIEN */}
