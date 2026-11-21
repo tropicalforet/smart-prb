@@ -258,7 +258,13 @@ export default function PasienIndex({
                 title={aktif ? (arahAktif === 'asc' ? 'Urutan naik — klik untuk urutan turun' : 'Urutan turun — klik untuk urutan naik') : 'Klik untuk mengurutkan'}
             >
                 {label}
-                <Ikon className={`w-3.5 h-3.5 shrink-0 ${aktif ? 'text-teal-600' : 'text-slate-300'}`} />
+                <span
+                    className={`inline-flex items-center justify-center rounded-md p-0.5 shrink-0 ${
+                        aktif ? 'bg-teal-600 text-white' : 'bg-teal-50 text-teal-600'
+                    }`}
+                >
+                    <Ikon className="w-3.5 h-3.5" strokeWidth={2.5} />
+                </span>
             </button>
         );
     };
