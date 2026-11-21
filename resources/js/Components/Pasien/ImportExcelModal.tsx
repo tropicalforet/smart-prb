@@ -42,20 +42,34 @@ interface HasilImpor {
 const UKURAN_POTONGAN = 500;
 
 /**
- * Kelompok alasan untuk ringkasan buffer: bagian sebelum ":" (bagian setelahnya
- * berisi tanggal/kolom yang berbeda-beda per baris) dan tanpa saran format.
+ * Kelompok alasan untuk rincian: tanpa nilai yang berbeda-beda per baris
+ * (tanggal, isi sel, nama FKTP) dan tanpa saran format.
  */
 function kelompokAlasan(teks: string): string {
+    // Catatan kolom bulan: 'APRIL: "32" bukan tanggal yang valid, dilewati'
+    const bulan = teks.match(/^([A-Z][A-Z ]*\d*):\s*(.*)$/);
+    if (bulan) {
+        const [, kolom, isi] = bulan;
+        if (/bukan tanggal yang valid/.test(isi)) return `Kolom ${kolom}: isi bukan tanggal (dilewati)`;
+        if (/dibaca sebagai tanggal/.test(isi))   return `Kolom ${kolom}: angka desimal dibaca dua tanggal`;
+        if (/tidak ada di bulan/.test(isi))       return `Kolom ${kolom}: tanggal tidak ada di bulan itu (dilewati)`;
+        return `Kolom ${kolom}: ${isi}`;
+    }
+    if (/^Ditandai "ADA" di \d+ FKTP/.test(teks)) return 'Ditandai "ADA" di lebih dari satu FKTP';
+    if (/^Tanggal mulai .* dibaca sebagai bulan\/tanggal/.test(teks)) return 'Tanggal mulai ditulis bulan/tanggal';
     return teks.split(':')[0].split('. Gunakan')[0].replace(/^Kolom "[^"]*"/, 'Kolom').trim();
 }
 
+/**
+ * Jumlah BARIS per alasan — satu baris dihitung sekali. Baris dengan beberapa
+ * alasan masuk satu kelompok gabungan ("NOKA … + Diagnosis …"), sehingga
+ * total rincian sama dengan jumlah Tidak Valid / Perlu Dicek.
+ */
 function hitungAlasan(daftar: string[][]): [string, number][] {
     const jumlah = new Map<string, number>();
     for (const alasanBaris of daftar) {
-        // Satu baris dihitung sekali per alasan
-        for (const a of new Set(alasanBaris.map(kelompokAlasan))) {
-            jumlah.set(a, (jumlah.get(a) ?? 0) + 1);
-        }
+        const kunci = [...new Set(alasanBaris.map(kelompokAlasan))].join(' + ');
+        jumlah.set(kunci, (jumlah.get(kunci) ?? 0) + 1);
     }
     return [...jumlah.entries()].sort((a, b) => b[1] - a[1]);
 }
