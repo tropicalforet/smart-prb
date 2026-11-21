@@ -291,10 +291,10 @@ class PasienPrbController extends Controller
         $pasienAll = self::gabungBarisDiagnosis($pasienAll);
 
         /*
-         * Sort data pasien — opsi mengikuti kolom tabel, urut kiri → kanan:
-         * kode_pasien (default), noka, jenis_prb, fktp_asal,
-         * tanggal_mulai_prb, tanggal_pengambilan_terakhir,
-         * tanggal_jadwal_berikutnya.
+         * Sort data pasien — dipilih lewat panah di judul kolom tabel:
+         * kode_pasien, diagnosis_prb, tanggal_mulai_prb,
+         * tanggal_pengambilan_terakhir, tanggal_jadwal_berikutnya,
+         * prioritas_ews (default), status_kepatuhan.
          *
          * Perbandingan natural (PRB-999 sebelum PRB-1000) dan nilai kosong
          * selalu di bawah, baik urutan naik maupun turun.
@@ -306,11 +306,15 @@ class PasienPrbController extends Controller
             'tanggal_mulai_prb'            => isset($p['tanggal_mulai_prb']) ? substr($p['tanggal_mulai_prb'], 0, 10) : null,
             'tanggal_pengambilan_terakhir' => $p['tanggal_pengambilan_terakhir'] ?? null,
             'tanggal_jadwal_berikutnya'    => substr((string) ($p['jadwal_target_aktif'] ?? $p['tanggal_jadwal_berikutnya'] ?? ''), 0, 10) ?: null,
+            'diagnosis_prb'                => implode(', ', (array) ($p['diagnosis_prb'] ?? [])) ?: null,
+            'status_kepatuhan'             => $p['status_kepatuhan'] ?? null,
             default                        => $p['kode_pasien'] ?? null,
         };
 
+        // Early Warning: naik = paling mendesak di atas, turun = kebalikannya
         $pasienAll = $sortBy === 'prioritas_ews'
             ? $this->urutkanPrioritasEws($pasienAll, $tanggalEvaluasi)
+                ->when($sortOrder === 'desc', fn ($c) => $c->reverse()->values())
             : $pasienAll->sort(function ($a, $b) use ($nilaiSort, $sortOrder) {
             $va = $nilaiSort($a);
             $vb = $nilaiSort($b);

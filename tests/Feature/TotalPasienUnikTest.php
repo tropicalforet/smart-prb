@@ -105,6 +105,21 @@ class TotalPasienUnikTest extends TestCase
             ->assertInertia(fn (Assert $p) => $p->has('pasienList', 2));
     }
 
+    public function test_urut_per_kolom_naik_dan_turun(): void
+    {
+        $urutan = fn (array $q) => collect($this->get(route('pasien.index', $q))->viewData('page')['props']['pasienList'])
+            ->pluck('kode_pasien')->all();
+
+        $this->assertSame(['PRB-1', 'PRB-2'], $urutan(['sort_by' => 'kode_pasien', 'sort_order' => 'asc']));
+        $this->assertSame(['PRB-2', 'PRB-1'], $urutan(['sort_by' => 'kode_pasien', 'sort_order' => 'desc']));
+        // Diagnosis: "Asma" < "Diabetes Melitus, Hipertensi"
+        $this->assertSame(['PRB-2', 'PRB-1'], $urutan(['sort_by' => 'diagnosis_prb', 'sort_order' => 'asc']));
+        $this->assertSame(['PRB-1', 'PRB-2'], $urutan(['sort_by' => 'diagnosis_prb', 'sort_order' => 'desc']));
+        // Early Warning: turun = kebalikan urutan naik
+        $naik = $urutan(['sort_by' => 'prioritas_ews', 'sort_order' => 'asc']);
+        $this->assertSame(array_reverse($naik), $urutan(['sort_by' => 'prioritas_ews', 'sort_order' => 'desc']));
+    }
+
     public function test_aksi_baris_gabungan_berlaku_untuk_semua_diagnosis(): void
     {
         $ht = PasienPrb::where('kunci_diagnosis', 'hipertensi')->first();

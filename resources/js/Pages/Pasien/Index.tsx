@@ -34,6 +34,9 @@ import {
     CheckSquare,
     X,
     IdCard,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -219,9 +222,6 @@ export default function PasienIndex({
                     search: searchTerm,
                     tanggal_evaluasi:
                         overrideEvalDate || evalDate,
-                    // Urutan selalu bawaan: prioritas early warning
-                    sort_by: undefined,
-                    sort_order: undefined,
                     ...newFilters,
                 },
                 {
@@ -238,6 +238,29 @@ export default function PasienIndex({
         setSearchTerm('');
         setEvalDate(tanggalEvaluasiBawaan); // akhir periode penelitian, mis. 2026-05-31
         router.get('/pasien', {}, { preserveState: true, preserveScroll: true });
+    };
+
+    // Klik judul kolom: urut naik; klik lagi: urut turun
+    const urutanAktif = filters.sort_by || 'prioritas_ews';
+    const arahAktif = filters.sort_order || 'asc';
+    const urutkan = (kolom: string) => {
+        const arah = urutanAktif === kolom && arahAktif === 'asc' ? 'desc' : 'asc';
+        applyFilters({ sort_by: kolom, sort_order: arah });
+    };
+    const judulUrut = (kolom: string, label: string) => {
+        const aktif = urutanAktif === kolom;
+        const Ikon = !aktif ? ArrowUpDown : arahAktif === 'asc' ? ArrowUp : ArrowDown;
+        return (
+            <button
+                type="button"
+                onClick={() => urutkan(kolom)}
+                className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-slate-800 ${aktif ? 'text-teal-700' : ''}`}
+                title={aktif ? (arahAktif === 'asc' ? 'Urutan naik — klik untuk urutan turun' : 'Urutan turun — klik untuk urutan naik') : 'Klik untuk mengurutkan'}
+            >
+                {label}
+                <Ikon className={`w-3.5 h-3.5 shrink-0 ${aktif ? 'text-teal-600' : 'text-slate-300'}`} />
+            </button>
+        );
     };
 
     // Handle search input with Enter
@@ -947,33 +970,34 @@ export default function PasienIndex({
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[250px]">
-                                    Pasien & Jenis
+                                    {judulUrut('kode_pasien', 'Pasien & Jenis')}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[210px]">
-                                    Diagnosis & FKTP
+                                    {judulUrut('diagnosis_prb', 'Diagnosis & FKTP')}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[130px]">
-                                    Tanggal Aktif
+                                    {judulUrut('tanggal_mulai_prb', 'Tanggal Aktif')}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[150px]">
-                                    Terakhir Ambil Obat
+                                    {judulUrut('tanggal_pengambilan_terakhir', 'Terakhir Ambil Obat')}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[150px]">
-                                    {filters.filter_periode
-                                        ? 'Jadwal Pengambilan'
-                                        : 'Jadwal Selanjutnya'}
+                                    {judulUrut(
+                                        'tanggal_jadwal_berikutnya',
+                                        filters.filter_periode ? 'Jadwal Pengambilan' : 'Jadwal Selanjutnya'
+                                    )}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[170px]">
-                                    Early Warning
+                                    {judulUrut('prioritas_ews', 'Early Warning')}
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[170px]">
-                                    Status Kepatuhan
+                                    {judulUrut('status_kepatuhan', 'Status Kepatuhan')}
                                 </th>
 
                                 <th className="px-5 py-4 text-center min-w-[120px]">
