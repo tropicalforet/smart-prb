@@ -34,9 +34,6 @@ import {
     CheckSquare,
     X,
     IdCard,
-    ArrowUpDown,
-    ArrowUp,
-    ArrowDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -64,10 +61,6 @@ export default function PasienIndex({
     const [evalDate, setEvalDate] = useState(tanggalEvaluasi);
     const [showFilters, setShowFilters] = useState(false);
     
-    // Sorting states
-    const [sortBy, setSortBy] = useState(filters.sort_by || 'prioritas_ews');
-    const [sortOrder, setSortOrder] = useState(filters.sort_order || 'asc');
-
     // Modal states
     const [addModalOpen, setAddModalOpen] = useState(false);
     const [importModalOpen, setImportModalOpen] = useState(false);
@@ -226,8 +219,9 @@ export default function PasienIndex({
                     search: searchTerm,
                     tanggal_evaluasi:
                         overrideEvalDate || evalDate,
-                    sort_by: sortBy,
-                    sort_order: sortOrder,
+                    // Urutan selalu bawaan: prioritas early warning
+                    sort_by: undefined,
+                    sort_order: undefined,
                     ...newFilters,
                 },
                 {
@@ -236,29 +230,14 @@ export default function PasienIndex({
                 }
             );
         },
-        [filters, searchTerm, evalDate, sortBy, sortOrder]
+        [filters, searchTerm, evalDate]
     );
 
     // Reset filters
     const resetFilters = () => {
         setSearchTerm('');
         setEvalDate(tanggalEvaluasiBawaan); // akhir periode penelitian, mis. 2026-05-31
-        setSortBy('prioritas_ews');
-        setSortOrder('asc');
         router.get('/pasien', {}, { preserveState: true, preserveScroll: true });
-    };
-    
-    // Handle sort change
-    const handleSortChange = (newSortBy: string) => {
-        setSortBy(newSortBy);
-        applyFilters({ sort_by: newSortBy, sort_order: sortOrder });
-    };
-    
-    // Toggle sort order
-    const toggleSortOrder = () => {
-        const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-        setSortOrder(newOrder);
-        applyFilters({ sort_by: sortBy, sort_order: newOrder });
     };
 
     // Handle search input with Enter
@@ -477,39 +456,6 @@ export default function PasienIndex({
                         </select>
                     </div>
                     
-                    {/* Sort Controls */}
-                    <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 shadow-sm h-[42px]">
-                        <select
-                            className="text-sm font-medium text-slate-700 bg-transparent border-0 rounded-l-xl px-3 py-2 focus:outline-none focus:ring-0 cursor-pointer pr-2"
-                            value={sortBy}
-                            onChange={(e) => handleSortChange(e.target.value)}
-                            title="Urutkan Berdasarkan"
-                        >
-                            {/* Bawaan: paling mendesak hari ini di atas; lalu urut kolom tabel */}
-                            <option value="prioritas_ews">Prioritas Early Warning</option>
-                            <option value="kode_pasien">Kode Pasien</option>
-                            <option value="noka">NOKA</option>
-                            <option value="jenis_prb">Jenis PRB</option>
-                            <option value="fktp_asal">FKTP Asal</option>
-                            <option value="tanggal_mulai_prb">Tanggal Aktif</option>
-                            <option value="tanggal_pengambilan_terakhir">Terakhir Ambil Obat</option>
-                            <option value="tanggal_jadwal_berikutnya">
-                                {filters.filter_periode ? 'Jadwal Pengambilan' : 'Jadwal Selanjutnya'}
-                            </option>
-                        </select>
-                        <button
-                            onClick={toggleSortOrder}
-                            className="px-2 py-2 hover:bg-slate-100 rounded-r-xl transition-colors border-l border-slate-200"
-                            title={sortOrder === 'asc' ? 'Urutan: A→Z / Lama→Baru' : 'Urutan: Z→A / Baru→Lama'}
-                        >
-                            {sortOrder === 'asc' ? (
-                                <ArrowUp className="w-4 h-4 text-teal-600" />
-                            ) : (
-                                <ArrowDown className="w-4 h-4 text-teal-600" />
-                            )}
-                        </button>
-                    </div>
-
                     <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2 shadow-sm mr-2">
                         <CalendarDays className="w-4 h-4 text-teal-600" />
 
