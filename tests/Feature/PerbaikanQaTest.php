@@ -34,7 +34,7 @@ class PerbaikanQaTest extends TestCase
         return PasienPrb::create([
             'kode_pasien'               => 'PRB-' . substr(md5($noka), 0, 6),
             'noka'                      => $noka,
-            'fktp_asal'                 => 'Puskesmas A',
+            'fktp_asal'                 => 'Puskesmas Padasuka',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2026-01-01',
             'tanggal_jadwal_berikutnya' => '2026-10-20',
@@ -110,7 +110,7 @@ class PerbaikanQaTest extends TestCase
     {
         $pasien = $this->pasien();
         $data = [
-            'noka' => 'QA 001', 'fktp_asal' => 'Puskesmas B', 'diagnosis_prb' => ['Asma'],
+            'noka' => 'QA 001', 'fktp_asal' => 'Puskesmas Griya Antapani', 'diagnosis_prb' => ['Asma'],
             'tanggal_mulai_prb' => '2026-01-01',
         ];
 
@@ -120,7 +120,7 @@ class PerbaikanQaTest extends TestCase
         $this->put(route('pasien.update', $pasien), $data + ['status' => 'Pasif', 'alasan_pasif' => 'Pindah Faskes'])
             ->assertSessionHasNoErrors();
         $pasien->refresh();
-        $this->assertSame(['Pasif', 'Pindah Faskes', 'Puskesmas B'], [$pasien->status, $pasien->alasan_pasif, $pasien->fktp_asal]);
+        $this->assertSame(['Pasif', 'Pindah Faskes', 'Puskesmas Griya Antapani'], [$pasien->status, $pasien->alasan_pasif, $pasien->fktp_asal]);
 
         $this->put(route('pasien.update', $pasien), $data + ['status' => 'Aktif', 'alasan_pasif' => null])
             ->assertSessionHasNoErrors();

@@ -72,6 +72,7 @@ const AKSI_COLORS: Record<string, string> = {
     catat_tindak_lanjut: 'bg-blue-50 text-blue-700',
     kirim_pengingat_wa:  'bg-emerald-50 text-emerald-700',
     petakan_diagnosis:   'bg-amber-50 text-amber-700',
+    bakukan_fktp:        'bg-amber-50 text-amber-700',
     login:               'bg-slate-50 text-slate-700',
     logout:              'bg-slate-50 text-slate-500',
     ganti_password:      'bg-indigo-50 text-indigo-700',

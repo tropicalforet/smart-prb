@@ -36,7 +36,7 @@ class ExportHistoriPengambilanTest extends TestCase
         $pasien = PasienPrb::create([
             'kode_pasien'               => $kode,
             'noka'                      => "NOKA {$kode}",
-            'fktp_asal'                 => 'Puskesmas A',
+            'fktp_asal'                 => 'Puskesmas Padasuka',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2021-01-01',
             'tanggal_jadwal_berikutnya' => '2026-11-19',
@@ -93,17 +93,17 @@ class ExportHistoriPengambilanTest extends TestCase
         $this->assertArrayNotHasKey('No. Faktur', $json['histori'][0]);
         $this->assertSame([
             [
-                'Kode Pasien' => 'PRB-0001', 'NOKA' => 'NOKA PRB-0001', 'Nama Pasien' => '-', 'Nama FKTP' => 'Puskesmas A',
+                'Kode Pasien' => 'PRB-0001', 'NOKA' => 'NOKA PRB-0001', 'Nama Pasien' => '-', 'Nama FKTP' => 'Puskesmas Padasuka',
                 'Pengambilan Ke' => 1, 'Tanggal Ambil' => '18/07/2021', 'Jadwal Ambil' => '18/07/2021',
                 'Keterangan' => 'Tepat waktu', 'Status Kepatuhan' => 'Patuh',
             ],
             [
-                'Kode Pasien' => 'PRB-0001', 'NOKA' => 'NOKA PRB-0001', 'Nama Pasien' => '-', 'Nama FKTP' => 'Puskesmas A',
+                'Kode Pasien' => 'PRB-0001', 'NOKA' => 'NOKA PRB-0001', 'Nama Pasien' => '-', 'Nama FKTP' => 'Puskesmas Padasuka',
                 'Pengambilan Ke' => 2, 'Tanggal Ambil' => '20/10/2026', 'Jadwal Ambil' => '17/08/2021',
                 'Keterangan' => 'Terlambat 1890 hari', 'Status Kepatuhan' => 'Tidak Teratur',
             ],
             [
-                'Kode Pasien' => 'PRB-0002', 'NOKA' => 'NOKA PRB-0002', 'Nama Pasien' => '-', 'Nama FKTP' => 'Puskesmas A',
+                'Kode Pasien' => 'PRB-0002', 'NOKA' => 'NOKA PRB-0002', 'Nama Pasien' => '-', 'Nama FKTP' => 'Puskesmas Padasuka',
                 'Pengambilan Ke' => 1, 'Tanggal Ambil' => '28/09/2026', 'Jadwal Ambil' => '01/10/2026',
                 'Keterangan' => '3 hari lebih awal', 'Status Kepatuhan' => 'Patuh',
             ],

@@ -88,6 +88,54 @@ class PasienPrb extends Model
         'SLE',
     ];
 
+    /**
+     * 8 FKTP penelitian dengan nama lengkap (notulensi meeting 15 November
+     * 2026, Tabel 3.6). FKTP lain di luar penelitian.
+     */
+    public const FKTP_OPTIONS = [
+        'Puskesmas Babakan Sari',
+        'Puskesmas Babakan Surabaya',
+        'Puskesmas Griya Antapani',
+        'Puskesmas Ibrahim Adjie',
+        'Puskesmas Padasuka',
+        'Klinik Pratama Asri Husada I',
+        'Klinik Pratama Medika Antapani',
+        'Klinik Pratama Seno Medika',
+    ];
+
+    /**
+     * Singkatan / nama inti FKTP di data apotek → nama lengkap (sama dengan
+     * ALIAS_FKTP di resources/js/lib/fktp.ts). Kunci tanpa awalan Puskesmas/
+     * PKM/Klinik Pratama/KP.
+     */
+    private const ALIAS_FKTP = [
+        'BABAKAN SARI' => 'Puskesmas Babakan Sari', 'BBKN SARI' => 'Puskesmas Babakan Sari',
+        'B SARI' => 'Puskesmas Babakan Sari', 'BB SARI' => 'Puskesmas Babakan Sari',
+        'BABAKAN SURABAYA' => 'Puskesmas Babakan Surabaya', 'B SBY' => 'Puskesmas Babakan Surabaya',
+        'B SURABAYA' => 'Puskesmas Babakan Surabaya', 'BBKN SBY' => 'Puskesmas Babakan Surabaya',
+        'BBKN SURABAYA' => 'Puskesmas Babakan Surabaya', 'BABAKAN SBY' => 'Puskesmas Babakan Surabaya',
+        'GRIYA ANTAPANI' => 'Puskesmas Griya Antapani', 'GRIYA' => 'Puskesmas Griya Antapani',
+        'IBRAHIM ADJIE' => 'Puskesmas Ibrahim Adjie', 'IBRAHIM ADJI' => 'Puskesmas Ibrahim Adjie',
+        'IBRA' => 'Puskesmas Ibrahim Adjie',
+        'PADASUKA' => 'Puskesmas Padasuka',
+        'ASRI HUSADA I' => 'Klinik Pratama Asri Husada I', 'ASRI HUSADA 1' => 'Klinik Pratama Asri Husada I',
+        'ASRI HUSADA' => 'Klinik Pratama Asri Husada I',
+        'MEDIKA ANTAPANI' => 'Klinik Pratama Medika Antapani', 'KPMA' => 'Klinik Pratama Medika Antapani',
+        'SENO MEDIKA' => 'Klinik Pratama Seno Medika', 'SENO' => 'Klinik Pratama Seno Medika',
+    ];
+
+    /**
+     * Nama lengkap salah satu dari 8 FKTP penelitian ("KPMA", "B. SBY",
+     * "Puskesmas Ibrahim Adjie" → nama baku); null bila di luar 8 FKTP.
+     */
+    public static function bakukanFktp(?string $fktp): ?string
+    {
+        $kunci = mb_strtoupper(preg_replace('/\s+/', ' ', trim(str_replace('.', ' ', (string) $fktp))));
+        $kunci = trim(preg_replace('/^(UPT\s+)?(PUSKESMAS|PKM|KLINIK PRATAMA|KLINIK|KP)\s+/', '', $kunci));
+
+        return self::ALIAS_FKTP[$kunci] ?? null;
+    }
+
     /** Singkatan di data apotek (sama dengan ALIAS_DIAGNOSIS di excel-utils.ts). */
     private const ALIAS_DIAGNOSIS = [
         'HT' => 'Hipertensi',

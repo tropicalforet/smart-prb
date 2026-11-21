@@ -19,7 +19,7 @@ class DashboardTest extends TestCase
         return PasienPrb::create([
             'kode_pasien'               => sprintf('PRB-%03d', $i),
             'noka'             => str_pad((string) $i, 13, '0', STR_PAD_LEFT),
-            'fktp_asal'                 => 'Puskesmas A',
+            'fktp_asal'                 => 'Puskesmas Padasuka',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2026-01-01',
             'tanggal_jadwal_berikutnya' => $jadwal,

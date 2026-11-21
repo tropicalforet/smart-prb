@@ -29,7 +29,7 @@ class PasienImportTest extends TestCase
                 [
                     'no_faktur' => 'INV-AUG-001',
                     'noka' => '1234567890123',
-                    'fktp_asal' => 'Puskesmas A',
+                    'fktp_asal' => 'Puskesmas Padasuka',
                     'diagnosis_prb' => ['Hipertensi'],
                     'tanggal_mulai_prb' => '2024-08-01',
                     'tanggal_berobat' => '2024-08-05',
@@ -39,7 +39,7 @@ class PasienImportTest extends TestCase
                 [
                     'no_faktur' => 'INV-AUG-001',
                     'noka' => '1234567890123',
-                    'fktp_asal' => 'Puskesmas A',
+                    'fktp_asal' => 'Puskesmas Padasuka',
                     'diagnosis_prb' => ['Hipertensi'],
                     'tanggal_mulai_prb' => '2024-08-01',
                     'tanggal_berobat' => '2024-08-05',
@@ -48,7 +48,7 @@ class PasienImportTest extends TestCase
                 [
                     'no_faktur' => 'INV-AUG-003',
                     'noka' => '',
-                    'fktp_asal' => 'Puskesmas B',
+                    'fktp_asal' => 'Puskesmas Griya Antapani',
                     'diagnosis_prb' => ['Diabetes Melitus'],
                     'tanggal_mulai_prb' => '2024-08-01',
                 ]
@@ -99,7 +99,7 @@ class PasienImportTest extends TestCase
                 [
                     'no_faktur' => 'INV-AUG-100',
                     'noka' => '9999999999999',
-                    'fktp_asal' => 'Klinik Sehat',
+                    'fktp_asal' => 'Klinik Pratama Seno Medika',
                     'diagnosis_prb' => ['Diabetes Melitus'],
                     'tanggal_mulai_prb' => '2024-08-01',
                     'tanggal_berobat' => '2024-08-10',
@@ -114,7 +114,7 @@ class PasienImportTest extends TestCase
                 [
                     'no_faktur' => 'INV-SEP-200',
                     'noka' => '9999999999999',
-                    'fktp_asal' => 'Klinik Sehat Baru',
+                    'fktp_asal' => 'Puskesmas Padasuka',
                     'diagnosis_prb' => ['Diabetes Melitus'],
                     'tanggal_mulai_prb' => '2024-08-01',
                     'tanggal_berobat' => '2024-09-10',
@@ -133,7 +133,7 @@ class PasienImportTest extends TestCase
         // Patient table should still have 1 record, with original profile intact (not overwritten)
         $this->assertDatabaseCount('pasien_prb', 1);
         $pasien = PasienPrb::where('noka', '9999999999999')->first();
-        $this->assertEquals('Klinik Sehat', $pasien->fktp_asal);
+        $this->assertEquals('Klinik Pratama Seno Medika', $pasien->fktp_asal);
         $this->assertEquals('2024-09-10', $pasien->tanggal_pengambilan_terakhir->toDateString());
 
         // History table should now have 2 records (August & September)
@@ -151,7 +151,7 @@ class PasienImportTest extends TestCase
                     'no_faktur' => 'TRX-20260924-001',
                     'kode_pasien' => 'PRB-001',
                     'noka' => '8888888888888',
-                    'fktp_asal' => 'Puskesmas Bu Lente',
+                    'fktp_asal' => 'Puskesmas Babakan Sari',
                     'diagnosis_prb' => ['Hipertensi'],
                     'tanggal_mulai_prb' => '2026-09-01',
                     'tanggal_berobat' => '2026-09-24',
@@ -173,7 +173,7 @@ class PasienImportTest extends TestCase
                     'no_faktur' => 'TRX-20261024-001',
                     'kode_pasien' => 'PRB-001',
                     'noka' => '8888888888888',
-                    'fktp_asal' => 'Puskesmas Bu Lente',
+                    'fktp_asal' => 'Puskesmas Babakan Sari',
                     'diagnosis_prb' => ['Hipertensi'],
                     'tanggal_mulai_prb' => '2026-09-01',
                     'tanggal_berobat' => '2026-10-24',
@@ -210,7 +210,7 @@ class PasienImportTest extends TestCase
             'data' => [
                 [
                     'noka'                         => 'PRB KPMA 001',
-                    'fktp_asal'                    => 'Puskesmas Antapani',
+                    'fktp_asal'                    => 'Puskesmas Griya Antapani',
                     'diagnosis_prb'                => ['Hipertensi', 'DM'],
                     'tanggal_mulai_prb'            => '2026-01-05',
                     'tanggal_pengambilan_terakhir' => '2026-09-20',
@@ -220,7 +220,7 @@ class PasienImportTest extends TestCase
                     'noka'              => 'PRB KPMA 002',
                     'nama_pasien'       => 'Tidak Boleh Tersimpan',
                     'no_whatsapp'       => '081200000000',
-                    'fktp_asal'         => 'Puskesmas Antapani',
+                    'fktp_asal'         => 'Puskesmas Griya Antapani',
                     'diagnosis_prb'     => ['Asma'],
                     'tanggal_mulai_prb' => '2026-02-01',
                 ],
@@ -254,7 +254,7 @@ class PasienImportTest extends TestCase
         // Kembali ke halaman asal (filter & pencarian tetap terjaga)
         $this->from(route('pasien.index'))->post(route('pasien.store'), [
             'noka'              => 'PRB KPMA 010',
-            'fktp_asal'         => 'Klinik Pratama Y',
+            'fktp_asal'         => 'Klinik Pratama Asri Husada I',
             'diagnosis_prb'     => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-03-01',
             'status'            => 'Aktif',

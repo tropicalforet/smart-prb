@@ -56,6 +56,9 @@ return [
         'diagnosis_prb' => [
             'max' => 'Satu data PRB hanya untuk satu diagnosis. Tambahkan diagnosis lain lewat tombol Tambah.',
         ],
+        'fktp_asal' => [
+            'in' => 'FKTP harus salah satu dari 8 FKTP penelitian.',
+        ],
         'diagnosis_prb.*' => [
             'in' => 'Diagnosis harus salah satu dari 9 diagnosis PRB.',
         ],

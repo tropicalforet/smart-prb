@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import { UserPlus, Save } from 'lucide-react';
 import { samarkanNama } from '@/lib/samaran';
+import { FKTP_OPTIONS } from '@/lib/fktp';
 
 interface Props {
     isOpen: boolean;
@@ -196,23 +197,20 @@ export function AddPatientModal({ isOpen, onClose }: Props) {
                         
                         <div>
                             <label htmlFor="fktp_asal" className="block text-xs font-medium text-slate-700 mb-1">FKTP Asal (Perujuk) *</label>
-                            <input 
-                                type="text" 
+                            {/* Hanya 8 FKTP penelitian */}
+                            <select
                                 id="fktp_asal"
-                                name="fktp_asal" 
-                                value={formData.fktp_asal} 
-                                onChange={handleChange} 
-                                required 
-                                maxLength={255}
-                                onInvalid={(e) => {
-                                    const target = e.target as HTMLInputElement;
-                                    if (target.validity.valueMissing) {
-                                        target.setCustomValidity('FKTP Asal wajib diisi.');
-                                    }
-                                }}
-                                onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500" 
-                            />
+                                name="fktp_asal"
+                                value={formData.fktp_asal}
+                                onChange={(e) => setFormData(prev => ({ ...prev, fktp_asal: e.target.value }))}
+                                required
+                                onInvalid={(e) => (e.target as HTMLSelectElement).setCustomValidity('Pilih FKTP Asal.')}
+                                onInput={(e) => (e.target as HTMLSelectElement).setCustomValidity('')}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-teal-500"
+                            >
+                                <option value="">Pilih FKTP…</option>
+                                {FKTP_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                            </select>
                         </div>
                         
                         <div className="grid grid-cols-1 gap-3">

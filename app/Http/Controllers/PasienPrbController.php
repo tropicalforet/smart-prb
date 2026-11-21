@@ -408,6 +408,7 @@ class PasienPrbController extends Controller
     public function store(Request $request)
     {
         $this->rapikanNoWhatsapp($request);
+        $this->bakukanFktpInput($request);
         $this->samarkanNamaInput($request);
 
         $validated = $request->validate([
@@ -416,8 +417,9 @@ class PasienPrbController extends Controller
                 'required', 'string', 'max:100',
             ],
 
+            // Hanya 8 FKTP penelitian (nama lengkap)
             'fktp_asal' => [
-                'required', 'string', 'max:255', 'regex:/^[\pL\pN\pP\pZ]+$/u'
+                'required', 'string', Rule::in(PasienPrb::FKTP_OPTIONS),
             ],
 
             'diagnosis_prb' => [
@@ -716,6 +718,7 @@ class PasienPrbController extends Controller
         $sebelum = AuditLogService::snapshotPasien($pasien);
 
         $this->rapikanNoWhatsapp($request);
+        $this->bakukanFktpInput($request);
         $this->samarkanNamaInput($request);
 
         $validated = $request->validate([
@@ -724,8 +727,9 @@ class PasienPrbController extends Controller
                 'required', 'string', 'max:100',
             ],
 
+            // Hanya 8 FKTP penelitian (nama lengkap)
             'fktp_asal' => [
-                'required', 'string', 'max:255', 'regex:/^[\pL\pN\pP\pZ]+$/u'
+                'required', 'string', Rule::in(PasienPrb::FKTP_OPTIONS),
             ],
 
             // Satu data PRB = satu diagnosis (diagnosis lain lewat Tambah)
@@ -974,6 +978,16 @@ class PasienPrbController extends Controller
      * Rapikan No. WhatsApp (opsional) sebelum validasi agar petugas boleh
      * mengetik 0812-..., +62 812 ..., dsb.
      */
+    /** Singkatan FKTP ("KPMA") → nama lengkap sebelum divalidasi terhadap 8 FKTP. */
+    private function bakukanFktpInput(Request $request): void
+    {
+        if ($request->filled('fktp_asal')) {
+            $request->merge([
+                'fktp_asal' => PasienPrb::bakukanFktp($request->input('fktp_asal')) ?? $request->input('fktp_asal'),
+            ]);
+        }
+    }
+
     private function rapikanNoWhatsapp(Request $request): void
     {
         if ($request->has('no_whatsapp')) {
@@ -1444,6 +1458,8 @@ class PasienPrbController extends Controller
             $fktpAsal    = !empty($row['fktp_asal'])
                 ? trim((string)$row['fktp_asal'])
                 : null;
+            // Singkatan apotek ("KPMA", "B SBY") → nama lengkap; null = di luar 8 FKTP
+            $fktpBaku    = PasienPrb::bakukanFktp($fktpAsal);
             // Nama sudah disamarkan di browser; disamarkan ulang sebagai pengaman
             $namaSamaran = PasienPrb::samarkanNama($row['nama_samaran'] ?? null);
 
@@ -1497,6 +1513,10 @@ class PasienPrbController extends Controller
             }
             if (empty($fktpAsal)) {
                 $invalidReasons[] = 'FKTP Asal wajib diisi';
+            } elseif ($fktpBaku === null) {
+                $invalidReasons[] = "FKTP {$fktpAsal} bukan salah satu dari 8 FKTP penelitian";
+            } else {
+                $fktpAsal = $fktpBaku;
             }
             if (empty($diagnosisPrb)) {
                 $invalidReasons[] = 'Diagnosis PRB wajib diisi';

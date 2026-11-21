@@ -72,6 +72,24 @@ function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: 
     return <>{display}</>;
 }
 
+/**
+ * Label sumbu grafik per FKTP: nama lengkap dalam dua baris ("Puskesmas" /
+ * "Babakan Surabaya"), dimiringkan agar 8 FKTP tidak saling menimpa.
+ */
+function TickFktp({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
+    const nama = payload?.value ?? '';
+    const m = nama.match(/^(Puskesmas|Klinik Pratama)\s+(.+)$/);
+    const [atas, bawah] = m ? [m[1], m[2]] : ['', nama];
+    return (
+        <g transform={`translate(${x},${y})`}>
+            <text transform="rotate(-45)" textAnchor="end" fontSize={10} fill="#64748b">
+                {atas && <tspan x={0} dy={10}>{atas}</tspan>}
+                <tspan x={0} dy={atas ? 11 : 10} fontWeight={600}>{bawah}</tspan>
+            </text>
+        </g>
+    );
+}
+
 /** Tooltip grafik per FKTP: % kepatuhan lalu jumlah Patuh & Tidak Teratur. */
 function TooltipFktp({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) {
     if (!active || !payload?.length) return null;
@@ -319,16 +337,14 @@ export default function Dashboard({
                 >
                     <h3 className="text-sm font-semibold text-slate-700 mb-4">Kepatuhan per FKTP Perujuk</h3>
                     {statistik.per_fktp.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={260}>
-                            <BarChart data={statistik.per_fktp} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                        <ResponsiveContainer width="100%" height={320}>
+                            <BarChart data={statistik.per_fktp} margin={{ top: 5, right: 10, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                 <XAxis
                                     dataKey="fktp"
-                                    tick={{ fontSize: 11, fill: '#64748b' }}
+                                    tick={<TickFktp />}
                                     interval={0}
-                                    angle={-15}
-                                    textAnchor="end"
-                                    height={60}
+                                    height={120}
                                 />
                                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
                                 {/* % kepatuhan muncul saat hover, seperti grafik tren:

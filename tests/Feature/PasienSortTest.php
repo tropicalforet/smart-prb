@@ -21,7 +21,7 @@ class PasienSortTest extends TestCase
         PasienPrb::create([
             'kode_pasien'       => $kode,
             'noka'              => 'NOKA ' . $kode,
-            'fktp_asal'         => 'Puskesmas A',
+            'fktp_asal'         => 'Puskesmas Padasuka',
             'diagnosis_prb'     => ['Hipertensi'],
             'tanggal_mulai_prb' => $mulai,
             'status'            => 'Aktif',

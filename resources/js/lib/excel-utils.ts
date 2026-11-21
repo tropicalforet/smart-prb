@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { bakukanFktp } from './fktp';
 import { samarkanNama } from '@/lib/samaran';
 import { PasienPRB, DIAGNOSIS_OPTIONS } from '@/types';
 
@@ -374,8 +375,9 @@ function miripKolomBulan(header: string): boolean {
  *   20            → [20]
  *   "1, 29"       → [1, 29]     (ambil 2x dalam sebulan)
  *   "2 + 7", "9 &11", "01 dan 31" → [2, 7] / [9, 11] / [1, 31]
- *   8.27          → [8, 27]     (koma terketik sebagai desimal) + peringatan
- *   "-" / kosong  → []          (tidak ambil obat)
+ *   8.27, "21.3"  → [8, 27] / [21, 30] (koma terketik sebagai desimal) + peringatan
+ *   "12/15", "12 - 15", "4 / 18" → [12, 15] / [4, 18]   ("/" dan "-" = pemisah)
+ *   "-", "/", kosong → []       (tidak ambil obat)
  */
 export function parseHariAmbil(val: any): { hari: number[]; peringatan: string[] } {
     const peringatan: string[] = [];
@@ -383,9 +385,12 @@ export function parseHariAmbil(val: any): { hari: number[]; peringatan: string[]
 
     let token: string[];
 
-    if (typeof val === 'number' && !Number.isInteger(val)) {
-        // Excel menyimpan "8,27" (locale Indonesia) sebagai angka 8.27.
-        const [depan, belakangRaw] = String(val).split('.');
+    // "8,27" terketik/tersimpan sebagai 8.27 — sebagai angka maupun teks.
+    const teks = String(val).trim();
+    const desimal = (typeof val === 'number' && !Number.isInteger(val)) || /^\d{1,2}\.\d{1,2}$/.test(teks);
+
+    if (desimal) {
+        const [depan, belakangRaw] = teks.split('.');
         let belakang = Number(belakangRaw);
         // Satu digit di belakang: "21,30" tersimpan sebagai 21.3 → pilih 30
         // bila valid & lebih besar dari tanggal pertama, selain itu 3.
@@ -393,11 +398,17 @@ export function parseHariAmbil(val: any): { hari: number[]; peringatan: string[]
             belakang = belakang * 10;
         }
         token = [depan, String(belakang)];
-        peringatan.push(`Nilai ${val} dibaca sebagai tanggal ${token.join(' dan ')}`);
+        peringatan.push(`Nilai ${teks} dibaca sebagai tanggal ${token.join(' dan ')}`);
+    } else if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(teks)) {
+        // Tanggal lengkap ("21/05/2026") di kolom bulan — jangan dipecah
+        // menjadi beberapa tanggal; dilaporkan agar dicek petugas.
+        token = [teks];
     } else {
-        token = String(val)
+        // "/" dan "-" (juga – —) dipakai petugas sebagai pemisah: "12/15",
+        // "12 - 15", atau "/" sendirian (tidak ambil) → bukan peringatan.
+        token = teks
             .toLowerCase()
-            .replace(/dan|&|\+/g, ',')
+            .replace(/dan|&|\+|\/|[-–—]/g, ',')
             .split(/[,;\s]+/)
             .filter(Boolean);
     }
@@ -666,10 +677,15 @@ export function validateImportData(
 
         if (!mapped.fktp_asal) {
             errors.push('FKTP / Faskes Asal wajib diisi (kolom FKTP atau tanda "ADA" di kolom FKTP)');
+        } else {
+            // Singkatan apotek ("KPMA", "B SBY") → nama lengkap; hanya 8 FKTP penelitian
+            const fktpBaku = bakukanFktp(mapped.fktp_asal);
+            if (fktpBaku) mapped.fktp_asal = fktpBaku;
+            else errors.push(`FKTP ${mapped.fktp_asal} bukan salah satu dari 8 FKTP penelitian`);
         }
 
         const tandaAda = fktpBertandaAda(row);
-        if (tandaAda.length > 1 && mapped.fktp_asal === tandaAda[0]) {
+        if (tandaAda.length > 1 && mapped.fktp_asal === (bakukanFktp(tandaAda[0]) ?? tandaAda[0])) {
             warnings.push(`Ditandai "ADA" di ${tandaAda.length} FKTP (${tandaAda.join(', ')}) — dipakai ${tandaAda[0]}`);
         }
 

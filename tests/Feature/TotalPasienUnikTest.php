@@ -25,9 +25,9 @@ class TotalPasienUnikTest extends TestCase
 
         // Pasien A: dua diagnosis (dua data PRB), Pasien B: satu diagnosis.
         // Semua jadwalnya sudah lewat jauh → Tidak Teratur (sudah dinilai).
-        $this->buat('PRB-1', '0001112223334', 'Hipertensi', 'Puskesmas A');
-        $this->buat('PRB-1', '0001112223334', 'Diabetes Melitus', 'Puskesmas A');
-        $this->buat('PRB-2', '0005556667778', 'Asma', 'Puskesmas B');
+        $this->buat('PRB-1', '0001112223334', 'Hipertensi', 'Puskesmas Padasuka');
+        $this->buat('PRB-1', '0001112223334', 'Diabetes Melitus', 'Puskesmas Padasuka');
+        $this->buat('PRB-2', '0005556667778', 'Asma', 'Puskesmas Griya Antapani');
     }
 
     protected function tearDown(): void
@@ -67,7 +67,7 @@ class TotalPasienUnikTest extends TestCase
             ->where('summary.total', 2)
             ->where('summary.total_diagnosis', 3)
             ->where('summary.tidak_patuh', 3)
-            ->where('rekapFktp.0.fktp', 'Puskesmas A')
+            ->where('rekapFktp.0.fktp', 'Puskesmas Padasuka')
             ->where('rekapFktp.0.total', 1)
             ->where('rekapFktp.0.total_diagnosis', 2)
             ->where('rekapFktp.0.tidak_patuh', 2)

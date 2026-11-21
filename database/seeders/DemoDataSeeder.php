@@ -28,13 +28,14 @@ class DemoDataSeeder extends Seeder
 {
     private const JUMLAH_PASIEN = 60;
 
+    // FKTP harus salah satu dari 8 FKTP penelitian (impor menolak FKTP lain)
     private const FKTP = [
-        'Puskesmas Mawar',
-        'Puskesmas Melati',
-        'Puskesmas Anggrek',
-        'Puskesmas Kenanga',
-        'Klinik Pratama Sehat Bersama',
-        'Klinik Pratama Medika Utama',
+        'Puskesmas Babakan Sari',
+        'Puskesmas Griya Antapani',
+        'Puskesmas Padasuka',
+        'Klinik Pratama Medika Antapani',
+        'Klinik Pratama Seno Medika',
+        'Puskesmas Ibrahim Adjie',
     ];
 
     // Nama fiktif (Faker tidak terpasang di server production)

@@ -172,7 +172,7 @@ class KepatuhanServiceTest extends TestCase
         $pasien = PasienPrb::create([
             'kode_pasien'               => 'PRB-T' . $urut,
             'noka'             => str_pad((string) $urut, 13, '0', STR_PAD_LEFT),
-            'fktp_asal'                 => 'Puskesmas Uji',
+            'fktp_asal'                 => 'Puskesmas Ibrahim Adjie',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2026-01-01',
             'jenis_prb'                 => 'Lama',
@@ -433,7 +433,7 @@ class KepatuhanServiceTest extends TestCase
         $pF = PasienPrb::create([
             'kode_pasien' => 'PRB-F',
             'noka' => '0001000000001',
-            'fktp_asal' => 'Klinik F',
+            'fktp_asal' => 'Klinik Pratama Seno Medika',
             'diagnosis_prb' => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-08-01',
             'jenis_prb' => 'Lama',
@@ -450,7 +450,7 @@ class KepatuhanServiceTest extends TestCase
         $pG = PasienPrb::create([
             'kode_pasien' => 'PRB-G',
             'noka' => '0001000000002',
-            'fktp_asal' => 'Klinik G',
+            'fktp_asal' => 'Klinik Pratama Asri Husada I',
             'diagnosis_prb' => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-08-01',
             'jenis_prb' => 'Lama',
@@ -466,7 +466,7 @@ class KepatuhanServiceTest extends TestCase
         $pH = PasienPrb::create([
             'kode_pasien' => 'PRB-H',
             'noka' => '0001000000003',
-            'fktp_asal' => 'Klinik H',
+            'fktp_asal' => 'Puskesmas Babakan Sari',
             'diagnosis_prb' => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-08-01',
             'jenis_prb' => 'Lama',
@@ -482,7 +482,7 @@ class KepatuhanServiceTest extends TestCase
         $pI = PasienPrb::create([
             'kode_pasien' => 'PRB-I',
             'noka' => '0001000000004',
-            'fktp_asal' => 'Klinik I',
+            'fktp_asal' => 'Puskesmas Babakan Surabaya',
             'diagnosis_prb' => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-08-01',
             'jenis_prb' => 'Lama',
@@ -511,7 +511,7 @@ class KepatuhanServiceTest extends TestCase
             $pasien = PasienPrb::create([
                 'kode_pasien'               => "PRB-DUA-{$i}",
                 'noka'             => str_pad((string) (9000 + $i), 13, '0', STR_PAD_LEFT),
-                'fktp_asal'                 => 'Puskesmas Uji',
+                'fktp_asal'                 => 'Puskesmas Ibrahim Adjie',
                 'diagnosis_prb'             => ['Hipertensi'],
                 'tanggal_mulai_prb'         => '2026-01-01',
                 'jenis_prb'                 => 'Lama',

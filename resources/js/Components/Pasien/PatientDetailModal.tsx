@@ -11,6 +11,7 @@ import {
 import { pesanPengingat, tahapPengingat, tautanWhatsapp, formatNoWhatsapp, LABEL_TAHAP } from '@/lib/pengingat-wa';
 import { samarkanNama } from '@/lib/samaran';
 import { csrfHeaders } from '@/lib/csrf';
+import { FKTP_OPTIONS, bakukanFktp } from '@/lib/fktp';
 
 /** diagnosis_prb bisa tersimpan sebagai array atau string JSON. */
 function daftarDiagnosis(diag: unknown): string[] {
@@ -128,7 +129,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         setFormUbah({
             nama_samaran: pasien.nama_samaran ?? '',
             no_whatsapp: pasien.no_whatsapp ? formatNoWhatsapp(pasien.no_whatsapp) : '',
-            fktp_asal: pasien.fktp_asal ?? '',
+            fktp_asal: bakukanFktp(pasien.fktp_asal) ?? '',
             diagnosis_prb: daftarDiagnosis(pasien.diagnosis_prb),
             tanggal_mulai_prb: (pasien.tanggal_mulai_prb ?? '').slice(0, 10),
             status: pasien.status,
@@ -415,14 +416,16 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
 
                                             <div>
                                                 <label htmlFor="ubah_fktp" className="block text-xs font-medium text-slate-700 mb-1">FKTP Asal (Perujuk) *</label>
-                                                <input
+                                                <select
                                                     id="ubah_fktp"
-                                                    type="text"
                                                     value={formUbah.fktp_asal}
-                                                    onChange={e => setFormUbah({ ...formUbah, fktp_asal: e.target.value.slice(0, 255) })}
+                                                    onChange={e => setFormUbah({ ...formUbah, fktp_asal: e.target.value })}
                                                     required
                                                     className={inputClass}
-                                                />
+                                                >
+                                                    <option value="">Pilih FKTP…</option>
+                                                    {FKTP_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                                                </select>
                                             </div>
 
                                             <fieldset>

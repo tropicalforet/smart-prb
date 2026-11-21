@@ -42,7 +42,7 @@ class RevisiBimbinganTest extends TestCase
         return PasienPrb::create(array_merge([
             'kode_pasien'               => $kode,
             'noka'                      => "NOKA {$kode}",
-            'fktp_asal'                 => 'Puskesmas A',
+            'fktp_asal'                 => 'Puskesmas Padasuka',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2026-01-01',
             'tanggal_jadwal_berikutnya' => '2026-06-10',
@@ -59,7 +59,7 @@ class RevisiBimbinganTest extends TestCase
         $pasien = $this->pasien('PRB-001');
 
         $this->put(route('pasien.update', $pasien), [
-            'noka' => $pasien->noka, 'fktp_asal' => 'Puskesmas A', 'diagnosis_prb' => ['Hipertensi'],
+            'noka' => $pasien->noka, 'fktp_asal' => 'Puskesmas Padasuka', 'diagnosis_prb' => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-01-01', 'status' => 'Meninggal', 'alasan_pasif' => 'Pindah Faskes',
         ])->assertSessionHasNoErrors();
 
@@ -182,14 +182,14 @@ class RevisiBimbinganTest extends TestCase
         $this->assertNull(PasienPrb::samarkanNama('  '));
 
         $this->post(route('pasien.store'), [
-            'noka' => 'NAMA 1', 'nama_samaran' => 'Budi Santoso', 'fktp_asal' => 'Puskesmas A',
+            'noka' => 'NAMA 1', 'nama_samaran' => 'Budi Santoso', 'fktp_asal' => 'Puskesmas Padasuka',
             'diagnosis_prb' => ['Asma'], 'tanggal_mulai_prb' => '2026-01-01', 'status' => 'Aktif',
         ])->assertSessionHasNoErrors();
         $this->assertSame('B**i S*****o', PasienPrb::where('noka', 'NAMA 1')->value('nama_samaran'));
 
         // Import: walau nama asli terkirim, yang tersimpan tetap tersamar
         $this->post(route('pasien.import'), ['data' => [[
-            'noka' => 'NAMA 2', 'nama_samaran' => 'Siti Aminah', 'fktp_asal' => 'Puskesmas A',
+            'noka' => 'NAMA 2', 'nama_samaran' => 'Siti Aminah', 'fktp_asal' => 'Puskesmas Padasuka',
             'diagnosis_prb' => ['Asma'], 'tanggal_mulai_prb' => '2026-01-05',
         ]]]);
         $this->assertSame('S**i A****h', PasienPrb::where('noka', 'NAMA 2')->value('nama_samaran'));

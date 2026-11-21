@@ -34,7 +34,7 @@ class TindakLanjutTest extends TestCase
         return PasienPrb::create([
             'kode_pasien'               => 'PRB-TL01',
             'noka'                      => 'TL 001',
-            'fktp_asal'                 => 'Puskesmas A',
+            'fktp_asal'                 => 'Puskesmas Padasuka',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2026-01-01',
             'tanggal_jadwal_berikutnya' => '2026-10-25',

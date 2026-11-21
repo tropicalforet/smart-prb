@@ -33,7 +33,7 @@ class NoWhatsappPasienTest extends TestCase
     {
         return array_merge([
             'noka'              => 'WA 001',
-            'fktp_asal'         => 'Puskesmas A',
+            'fktp_asal'         => 'Puskesmas Padasuka',
             'diagnosis_prb'     => ['Hipertensi'],
             'tanggal_mulai_prb' => '2026-01-01',
             'status'            => 'Aktif',
@@ -82,7 +82,7 @@ class NoWhatsappPasienTest extends TestCase
         $this->assertSame('6285711112222', $pasien->fresh()->no_whatsapp);
 
         // Ubah data lain tanpa mengirim nomor → nomor tetap
-        $this->put(route('pasien.update', $pasien), $this->dataPasien(['fktp_asal' => 'Puskesmas B']))
+        $this->put(route('pasien.update', $pasien), $this->dataPasien(['fktp_asal' => 'Puskesmas Griya Antapani']))
             ->assertSessionHasNoErrors();
         $this->assertSame('6285711112222', $pasien->fresh()->no_whatsapp);
 

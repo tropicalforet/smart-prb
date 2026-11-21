@@ -24,7 +24,7 @@ class RealisasiPrbLamaTest extends TestCase
         $pasien = PasienPrb::create([
             'kode_pasien'                  => 'PRB-001',
             'noka'                         => 'PRB KPMA 001',
-            'fktp_asal'                    => 'Puskesmas A',
+            'fktp_asal'                    => 'Puskesmas Padasuka',
             'diagnosis_prb'                => ['Hipertensi'],
             'tanggal_mulai_prb'            => '2025-01-01',
             'tanggal_pengambilan_terakhir' => '2026-01-01',

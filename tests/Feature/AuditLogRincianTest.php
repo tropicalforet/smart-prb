@@ -27,7 +27,7 @@ class AuditLogRincianTest extends TestCase
         return PasienPrb::create([
             'kode_pasien'               => 'PRB-001',
             'noka'                      => 'PRB KPMA 001',
-            'fktp_asal'                 => 'Puskesmas A',
+            'fktp_asal'                 => 'Puskesmas Padasuka',
             'diagnosis_prb'             => ['Hipertensi'],
             'tanggal_mulai_prb'         => '2026-01-01',
             'jenis_prb'                 => 'Lama',
@@ -50,14 +50,14 @@ class AuditLogRincianTest extends TestCase
 
         $this->put(route('pasien.update', $pasien), [
             'noka'              => 'PRB KPMA 001',
-            'fktp_asal'         => 'Puskesmas B',
+            'fktp_asal'         => 'Puskesmas Griya Antapani',
             'diagnosis_prb'     => ['Diabetes Melitus'], // satu data = satu diagnosis
             'tanggal_mulai_prb' => '2026-01-01',
             'status'            => 'Aktif',
         ])->assertSessionHasNoErrors();
 
         $rincian = $this->rincianTerakhir('ubah');
-        $this->assertSame(['lama' => 'Puskesmas A', 'baru' => 'Puskesmas B'], array_intersect_key($rincian['FKTP'], ['lama' => 1, 'baru' => 1]));
+        $this->assertSame(['lama' => 'Puskesmas Padasuka', 'baru' => 'Puskesmas Griya Antapani'], array_intersect_key($rincian['FKTP'], ['lama' => 1, 'baru' => 1]));
         $this->assertSame('Diabetes Melitus', $rincian['Diagnosis']['baru']);
         $this->assertArrayNotHasKey('NOKA', $rincian, 'field yang tidak berubah tidak dicatat');
         $this->assertSame('Petugas Uji', AuditLog::where('aksi', 'ubah')->value('petugas'));

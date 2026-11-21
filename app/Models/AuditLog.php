@@ -65,6 +65,7 @@ class AuditLog extends Model
         'catat_tindak_lanjut'=> 'Catat Tindak Lanjut',
         'kirim_pengingat_wa' => 'Kirim Pengingat WA',
         'petakan_diagnosis'  => 'Petakan Diagnosis',
+        'bakukan_fktp'       => 'Bakukan Nama FKTP',
         'login'              => 'Login',
         'logout'             => 'Logout',
         'ganti_password'     => 'Ganti Password',
