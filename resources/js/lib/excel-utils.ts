@@ -1151,12 +1151,12 @@ export function exportToExcel(
  * No. HP TIDAK termasuk — tidak boleh dikumpulkan.
  * - NOKA diformat sebagai TEXT agar angka 0 di depan terjaga.
  * - Kolom tanggal diberi format DD/MM/YYYY.
- * - Sheet "Petunjuk" disertakan untuk panduan petugas.
+ * - Hanya satu sheet (tanpa sheet petunjuk).
  */
 export function downloadImportTemplate(): void {
     const workbook = XLSX.utils.book_new();
 
-    // ── Sheet 1: Template Import ──────────────────────────────────────────
+    // ── Sheet: Template Import ──────────────────────────────────────────
 
     const headers = [
         'NOKA / NOKA Tersandi',
@@ -1211,75 +1211,6 @@ export function downloadImportTemplate(): void {
     worksheet['!ref'] = XLSX.utils.encode_range(range);
 
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Template Import');
-
-    // ── Sheet 2: Petunjuk Pengisian ───────────────────────────────────────
-    const petunjukData: string[][] = [
-        ['PETUNJUK PENGISIAN TEMPLATE IMPORT PASIEN PRB'],
-        [''],
-        ['1. Isi data pasien mulai dari BARIS 3 (baris 2 adalah contoh — hapus atau ganti).'],
-        ['2. JANGAN mengubah nama kolom pada baris 1 (header).'],
-        ['3. Satu baris = satu pasien.'],
-        [''],
-        ['KOLOM & ATURAN PENGISIAN:'],
-        [''],
-        ['NOKA / NOKA Tersandi',
-         'NOKA = No. BPJS (nomor kartu pasien) atau NOKA yang sudah disandikan. WAJIB DIISI.',
-         'Judul kolom "No. BPJS", "No. Kartu BPJS", atau "Nomor BPJS" juga dikenali.',
-         'Format bebas (huruf, angka, spasi). Contoh: PRB KPMA 001',
-        ],
-        ['Nama Pasien',
-         'Nama pasien. Boleh kosong.',
-         'Disamarkan otomatis saat impor: "Rizka Dwi Putri" tersimpan sebagai "R***a D*i P***i".',
-         'Nama asli tidak pernah dikirim maupun disimpan.',
-        ],
-        ['FKTP / Faskes Asal',
-         'Nama Fasilitas Kesehatan Tingkat Pertama asal pasien. WAJIB DIISI.',
-         'Contoh: Puskesmas Kecamatan X, Klinik Pratama Y',
-        ],
-        ['Diagnosis PRB',
-         'Diagnosis pasien. WAJIB DIISI.',
-         'Lebih dari satu diagnosis: pisahkan dengan koma (tanda - + / juga diterima).',
-         'Singkatan HT, DM, PJK, dsb. dibakukan otomatis. Contoh: HT, DM atau DM-HT',
-        ],
-        ['Tanggal Mulai PRB',
-         'Tanggal pasien mulai terdaftar program PRB. WAJIB DIISI.',
-         'Format: DD/MM/YYYY',
-         'Contoh: 01/08/2026',
-        ],
-        ['Tanggal Pengambilan Obat Terakhir',
-         'Tanggal terakhir pasien mengambil obat di apotek. Boleh kosong untuk pasien baru.',
-         'Format: DD/MM/YYYY',
-         'Catatan: Jika diisi, sistem menghitung jadwal berikutnya otomatis (+30 hari untuk PRB Lama).',
-         'Jika kosong dan Tanggal Mulai PRB diisi, jadwal dihitung dari mulai PRB +23 hari (PRB Baru).',
-        ],
-        [''],
-        ['KETENTUAN ETIK:'],
-        ['- Nama pasien hanya disimpan dalam bentuk tersamar (huruf pertama & terakhir tiap kata).'],
-        ['- JANGAN mencantumkan No. HP / No. Telepon. Jika ada, sistem mengabaikannya.'],
-        [''],
-        ['CATATAN PENTING:'],
-        ['- Simpan file sebagai .xlsx sebelum upload.'],
-        ['- Sistem mengenali pasien berdasarkan NOKA.'],
-        ['- Pasien yang NOKA-nya sudah ada akan diperbarui datanya, tidak diduplikasi.'],
-        ['- Import bersifat kumulatif: data pasien sebelumnya tidak akan terhapus.'],
-        ['- PRB Baru (tanggal mulai = bulan ini): jadwal pertama = mulai PRB + 23 hari.'],
-        ['- PRB Lama (tanggal mulai = bulan sebelumnya): jadwal berikutnya = terakhir ambil + 30 hari.'],
-        [''],
-        ['FORMAT PER BULAN (alternatif):'],
-        ['- Kolom tanggal pengambilan boleh diganti kolom per bulan (mis. MARET | APRIL | MEI) berisi tanggal ambil saja.'],
-        ['- Ambil 2x dalam sebulan: tulis "1, 29". Tidak ambil: isi "-".'],
-        ['- Tahun: tulis di judul kolom (mis. DESEMBER 2026 | JANUARI 2027), wajib bila file melewati pergantian tahun.'],
-        ['  Judul tanpa tahun (mis. MARET) memakai tahun yang dipilih saat impor.'],
-    ];
-
-    const wsPetunjuk = XLSX.utils.aoa_to_sheet(petunjukData);
-    wsPetunjuk['!cols'] = [
-        { wch: 40 },
-        { wch: 65 },
-        { wch: 50 },
-        { wch: 50 },
-    ];
-    XLSX.utils.book_append_sheet(workbook, wsPetunjuk, 'Petunjuk');
 
     XLSX.writeFile(workbook, 'template-import-pasien-prb.xlsx');
 }
