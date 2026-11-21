@@ -106,6 +106,7 @@ export interface ImportRow {
     tanggal_mulai_prb?: string;
     tanggal_berobat?: string;
     tanggal_pengambilan?: string;
+    baris_excel?: string;  // penanda baris hasil validasi (lihat penandaBaris)
 }
 
 export interface ValidationResult {
@@ -426,6 +427,19 @@ const ALIAS_DIAGNOSIS: Record<string, string> = {
     EPI: 'Epilepsi', EPILEPSI: 'Epilepsi',
     SKIZO: 'Skizofrenia', SKIZOFREN: 'Skizofrenia', SKIZOFRENIA: 'Skizofrenia', SCZ: 'Skizofrenia',
     SLE: 'SLE',
+
+    // Pemetaan diagnosis penyerta ke kategori PRB (notulensi meeting
+    // 15 November 2026) — sama dengan PasienPrb::ALIAS_DIAGNOSIS.
+    CHF: 'Penyakit Jantung', 'GAGAL JANTUNG': 'Penyakit Jantung',
+    DLP: 'Penyakit Jantung', DISLIPIDEMIA: 'Penyakit Jantung',
+    ARITMIA: 'Penyakit Jantung',
+    NEUROPATI: 'Diabetes Melitus', NEUROPATHY: 'Diabetes Melitus',
+    GOUT: 'Diabetes Melitus', 'GOUT ARTHRITIS': 'Diabetes Melitus',
+    HIPERURISEMIA: 'Diabetes Melitus', HYPERURICEMIA: 'Diabetes Melitus',
+    'ASAM URAT': 'Diabetes Melitus', AU: 'Diabetes Melitus',
+    BPH: 'Hipertensi',
+    PSIKIATRI: 'Skizofrenia', PARKINSON: 'Skizofrenia', SCHIZOPHRENIA: 'Skizofrenia',
+    ANEMIA: 'Asma',
 };
 
 /**
@@ -741,6 +755,15 @@ function pisahPerDiagnosis(results: ValidationResult[]): ValidationResult[] {
 }
 
 /** Kunci diagnosis, sama dengan PasienPrb::kunciDiagnosis(): urut, huruf kecil. */
+/**
+ * Penanda satu hasil validasi: sheet, baris, dan diagnosis (satu baris Excel
+ * berisi beberapa diagnosis menjadi beberapa hasil). Dipakai agar jumlah
+ * "Gagal karena tidak valid" sama dengan jumlah "Tidak Valid" di pratinjau.
+ */
+export function penandaBaris(r: ValidationResult): string {
+    return `${r.sheet}#${r.row}#${kunciDiagnosis(r.data.diagnosis_prb ?? [])}`;
+}
+
 function kunciDiagnosis(diagnosis: string[]): string {
     return [...new Set(diagnosis.map((d) => d.trim().toLowerCase()).filter(Boolean))].sort().join('|');
 }
@@ -794,13 +817,20 @@ export function buildImportPayload(results: ValidationResult[]): ImportRow[] {
     const payload: ImportRow[] = [];
     for (const r of results) {
         if (!r.valid) continue;
+        const baris_excel = penandaBaris(r);
         if (r.pengambilan.length === 0) {
-            payload.push({ ...r.data, tanggal_pengambilan: undefined });
+            payload.push({ ...r.data, tanggal_pengambilan: undefined, baris_excel });
             continue;
         }
-        for (const tanggal of r.pengambilan) {
-            payload.push({ ...r.data, tanggal_pengambilan: tanggal });
-        }
+        // Satu baris berisi beberapa pengambilan (mis. "1, 31") dengan satu
+        // No. Faktur: pengambilan ke-2 dst. diberi akhiran tanggal agar tidak
+        // dianggap duplikat / menimpa pengambilan pertama.
+        r.pengambilan.forEach((tanggal, i) => {
+            const no_faktur = r.data.no_faktur && i > 0
+                ? `${r.data.no_faktur}-${tanggal.replace(/-/g, '')}`
+                : r.data.no_faktur;
+            payload.push({ ...r.data, no_faktur, tanggal_pengambilan: tanggal, baris_excel });
+        });
     }
     return payload;
 }

@@ -5,6 +5,7 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasienPrbController;
 use App\Http\Controllers\TindakLanjutController;
+use App\Http\Controllers\PengingatWaController;
 use App\Http\Controllers\RekapKepatuhanController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,12 +43,14 @@ Route::middleware('auth')->group(function () {
     Route::put('pasien/{pasien}/terakhir-ambil', [PasienPrbController::class, 'updateTerakhirAmbil'])->name('pasien.terakhir-ambil.update');
     Route::post('pasien/{pasien}/status', [PasienPrbController::class, 'updateStatus'])->name('pasien.status');
     Route::post('pasien/import/batch', [PasienPrbController::class, 'import'])->name('pasien.import');
+    Route::post('pasien/import/tidak-valid', [PasienPrbController::class, 'importTidakValid'])->name('pasien.import.tidak-valid');
     Route::post('pasien/hapus-massal', [PasienPrbController::class, 'destroyBulk'])->name('pasien.destroy-bulk');
     Route::get('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export');
     Route::post('pasien-export', [PasienPrbController::class, 'export'])->name('pasien.export.terpilih');
 
     // Tindak Lanjut
     Route::post('pasien/{pasien}/tindak-lanjut', [TindakLanjutController::class, 'store'])->name('tindak-lanjut.store');
+    Route::post('pasien/{pasien}/pengingat-wa', [PengingatWaController::class, 'store'])->name('pengingat-wa.store');
 
     // Audit Log
     Route::get('/audit-log', [AuditLogController::class, 'index'])->name('audit-log.index');

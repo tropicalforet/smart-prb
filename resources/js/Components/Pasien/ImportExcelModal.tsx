@@ -5,20 +5,33 @@ import { router } from '@inertiajs/react';
 import { csrfHeaders } from '@/lib/csrf';
 import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info, TriangleAlert, CalendarDays, Download } from 'lucide-react';
 import {
-    parseExcelFile, validateImportData, buildImportPayload, kolomBulan,
+    parseExcelFile, validateImportData, buildImportPayload, kolomBulan, penandaBaris,
     ValidationResult, ParseMeta, downloadImportTemplate, exportToExcel,
 } from '@/lib/excel-utils';
+import { jumlahPasienUnik } from '@/lib/pasien-unik';
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
 }
 
-interface HasilImpor {
+/** Jawaban server per potongan (satuan: baris transaksi, kecuali pasien & baris_gagal). */
+interface HasilPotongan {
     baru: number;
     diperbarui: number;
     duplikat: number;
     invalid: number;
+    pasien?: Record<string, string[]>; // NOKA -> diagnosis yang tersimpan
+    baris_gagal?: string[];
+}
+
+/** Ringkasan impor - dihitung per pasien (NOKA unik), bukan per diagnosis/transaksi. */
+interface HasilImpor {
+    pasien: number;            // pasien yang datanya berhasil di-import
+    pasienMultiDiagnosis: number;
+    transaksi: number;         // transaksi pengambilan yang tersimpan
+    duplikat: number;          // transaksi yang sudah ada -> dilewati
+    gagal: number;             // baris tidak valid (sama dengan "Tidak Valid" di pratinjau)
 }
 
 /**
@@ -103,8 +116,36 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
         }
 
         setUploadError(null);
-        const total: HasilImpor = { baru: 0, diperbarui: 0, duplikat: 0, invalid: 0 };
+        const diagnosisPerNoka = new Map<string, Set<string>>();
+        const barisGagal = new Set(results.filter(r => !r.valid).map(penandaBaris));
+        let transaksi = 0, duplikat = 0;
+        const ringkas = (): HasilImpor => ({
+            pasien: jumlahPasienUnik([...diagnosisPerNoka.keys()]),
+            pasienMultiDiagnosis: [...diagnosisPerNoka.values()].filter(d => d.size > 1).length,
+            transaksi, duplikat, gagal: barisGagal.size,
+        });
         setProgres({ selesai: 0, total: payload.length });
+
+        // Baris tidak valid dicatat ke tabel buffer beserta alasannya
+        const tidakValid = results.filter(r => !r.valid).map(r => ({
+            kode_pasien: r.data.kode_pasien, noka: r.data.noka, fktp_asal: r.data.fktp_asal,
+            diagnosis_prb: r.data.diagnosis_prb, no_faktur: r.data.no_faktur,
+            tanggal_mulai_prb: r.data.tanggal_mulai_prb, tanggal_berobat: r.data.tanggal_berobat,
+            tanggal_pengambilan: r.pengambilan[0] ?? r.data.tanggal_pengambilan,
+            keterangan: `${r.sheet} baris ${r.row}: ${r.errors.join('; ')}`.slice(0, 2000),
+        }));
+        for (let i = 0; i < tidakValid.length; i += UKURAN_POTONGAN) {
+            try {
+                await fetch('/pasien/import/tidak-valid', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                    body: JSON.stringify({ data: tidakValid.slice(i, i + UKURAN_POTONGAN) }),
+                });
+            } catch {
+                // Hanya catatan buffer - tidak menghalangi impor data valid
+            }
+        }
 
         for (let i = 0; i < payload.length; i += UKURAN_POTONGAN) {
             const potongan = payload.slice(i, i + UKURAN_POTONGAN);
@@ -120,8 +161,16 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         ? 'Sesi kedaluwarsa. Muat ulang halaman lalu impor lagi.'
                         : `Server menolak data (kode ${res.status}).`);
                 }
-                const json: HasilImpor = await res.json();
-                (Object.keys(total) as (keyof HasilImpor)[]).forEach(k => { total[k] += json[k] ?? 0; });
+                const json: HasilPotongan = await res.json();
+                transaksi += (json.baru ?? 0) + (json.diperbarui ?? 0);
+                duplikat  += json.duplikat ?? 0;
+                Object.entries(json.pasien ?? {}).forEach(([noka, daftar]) => {
+                    const kunci = noka.replace(/\s+/g, '').toUpperCase();
+                    const set = diagnosisPerNoka.get(kunci) ?? new Set<string>();
+                    daftar.forEach(d => set.add(d));
+                    diagnosisPerNoka.set(kunci, set);
+                });
+                (json.baris_gagal ?? []).forEach(b => barisGagal.add(b));
                 setProgres({ selesai: i + potongan.length, total: payload.length });
             } catch (err: any) {
                 // Potongan sebelumnya sudah tersimpan. Mengimpor ulang file yang
@@ -132,14 +181,14 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                     `(baris yang sudah masuk akan dilewati sebagai duplikat).`
                 );
                 setProgres(null);
-                setHasil(total);
+                setHasil(ringkas());
                 router.reload();
                 return;
             }
         }
 
         setProgres(null);
-        setHasil(total);
+        setHasil(ringkas());
         router.reload();
     };
 
@@ -260,10 +309,10 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         )}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[
-                                { label: 'Pasien baru',           value: hasil.baru,       color: 'bg-emerald-50 text-emerald-700' },
-                                { label: 'Pasien lama diperbarui', value: hasil.diperbarui, color: 'bg-teal-50 text-teal-700' },
-                                { label: 'Duplikat dilewati',     value: hasil.duplikat,   color: 'bg-slate-100 text-slate-700' },
-                                { label: 'Gagal',                 value: hasil.invalid,    color: 'bg-rose-50 text-rose-700' },
+                                { label: 'Jumlah pasien di-import',                        value: hasil.pasien,               color: 'bg-emerald-50 text-emerald-700' },
+                                { label: 'Jumlah pasien dengan diagnosis lebih dari satu', value: hasil.pasienMultiDiagnosis, color: 'bg-teal-50 text-teal-700' },
+                                { label: 'Duplikat dilewati',                              value: hasil.duplikat,             color: 'bg-slate-100 text-slate-700' },
+                                { label: 'Gagal karena tidak valid',                       value: hasil.gagal,                color: 'bg-rose-50 text-rose-700' },
                             ].map(c => (
                                 <div key={c.label} className={`${c.color} rounded-xl p-3 text-center`}>
                                     <div className="text-2xl font-bold">{c.value}</div>
@@ -271,6 +320,12 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                 </div>
                             ))}
                         </div>
+                        <dl className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
+                            <div><dt className="inline font-semibold">Jumlah pasien di-import:</dt> <dd className="inline">pasien (NOKA unik) yang datanya tersimpan dari file ini — pasien dengan beberapa diagnosis dihitung satu kali. Tersimpan {hasil.transaksi} transaksi pengambilan obat.</dd></div>
+                            <div><dt className="inline font-semibold">Diagnosis lebih dari satu:</dt> <dd className="inline">bagian dari pasien di atas yang punya dua diagnosis atau lebih (tampil sebagai beberapa baris di Data Pasien).</dd></div>
+                            <div><dt className="inline font-semibold">Duplikat dilewati:</dt> <dd className="inline">transaksi pengambilan yang sudah ada sebelumnya, tidak disimpan ulang.</dd></div>
+                            <div><dt className="inline font-semibold">Gagal karena tidak valid:</dt> <dd className="inline">baris yang tidak memenuhi syarat (sama dengan jumlah "Tidak Valid" di rincian sebelum impor); dicatat di tabel buffer beserta alasannya, tidak masuk data pasien.</dd></div>
+                        </dl>
                         <div className="flex justify-end">
                             <Button onClick={handleClose}>Tutup</Button>
                         </div>

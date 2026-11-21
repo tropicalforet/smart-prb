@@ -96,6 +96,19 @@ class PasienPrb extends Model
         'SRTOKE' => 'Stroke',
         'EPI' => 'Epilepsi',
         'SKIZO' => 'Skizofrenia', 'SKIZOFREN' => 'Skizofrenia', 'SCZ' => 'Skizofrenia',
+
+        // Pemetaan diagnosis penyerta ke kategori PRB (notulensi meeting
+        // 15 November 2026) — dibakukan otomatis saat impor.
+        'CHF' => 'Penyakit Jantung', 'GAGAL JANTUNG' => 'Penyakit Jantung',
+        'DLP' => 'Penyakit Jantung', 'DISLIPIDEMIA' => 'Penyakit Jantung',
+        'ARITMIA' => 'Penyakit Jantung',
+        'NEUROPATI' => 'Diabetes Melitus', 'NEUROPATHY' => 'Diabetes Melitus',
+        'GOUT' => 'Diabetes Melitus', 'GOUT ARTHRITIS' => 'Diabetes Melitus',
+        'HIPERURISEMIA' => 'Diabetes Melitus', 'HYPERURICEMIA' => 'Diabetes Melitus',
+        'ASAM URAT' => 'Diabetes Melitus', 'AU' => 'Diabetes Melitus',
+        'BPH' => 'Hipertensi',
+        'PSIKIATRI' => 'Skizofrenia', 'PARKINSON' => 'Skizofrenia', 'SCHIZOPHRENIA' => 'Skizofrenia',
+        'ANEMIA' => 'Asma',
     ];
 
     /**
@@ -156,6 +169,12 @@ class PasienPrb extends Model
     public function riwayatTindakLanjut(): HasMany
     {
         return $this->hasMany(RiwayatTindakLanjut::class, 'pasien_prb_id');
+    }
+
+    /** Histori pengiriman pengingat WhatsApp. */
+    public function riwayatPengingatWa(): HasMany
+    {
+        return $this->hasMany(RiwayatPengingatWa::class, 'pasien_prb_id');
     }
 
     public function scopeAktif($query)

@@ -63,6 +63,8 @@ class AuditLog extends Model
         'import'             => 'Import',
         'hapus_massal'       => 'Hapus Massal',
         'catat_tindak_lanjut'=> 'Catat Tindak Lanjut',
+        'kirim_pengingat_wa' => 'Kirim Pengingat WA',
+        'petakan_diagnosis'  => 'Petakan Diagnosis',
         'login'              => 'Login',
         'logout'             => 'Logout',
         'ganti_password'     => 'Ganti Password',

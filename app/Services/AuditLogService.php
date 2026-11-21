@@ -239,6 +239,14 @@ class AuditLogService
         );
     }
 
+    public function kirimPengingatWa(string $id, string $label, array $perubahan = []): void
+    {
+        $this->catat('tindak_lanjut', 'kirim_pengingat_wa',
+            "Mengirim pengingat WhatsApp untuk pasien {$label}",
+            $id, $label, $perubahan
+        );
+    }
+
     public function login(): void
     {
         $this->catat('auth', 'login', 'Login ke sistem');

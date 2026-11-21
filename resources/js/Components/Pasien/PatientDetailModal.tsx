@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PasienPRB, StatusPasien, TINDAKAN_OPTIONS, KATEGORI_TINDAK_LANJUT_OPTIONS, DIAGNOSIS_OPTIONS, ALASAN_PASIF_OPTIONS, STATUS_PASIEN_OPTIONS } from '@/types';
+import { PasienPRB, RiwayatPengingatWa, StatusPasien, TINDAKAN_OPTIONS, KATEGORI_TINDAK_LANJUT_OPTIONS, DIAGNOSIS_OPTIONS, ALASAN_PASIF_OPTIONS, STATUS_PASIEN_OPTIONS } from '@/types';
 import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { pesanPengingat, tahapPengingat, tautanWhatsapp, formatNoWhatsapp, LABEL_TAHAP } from '@/lib/pengingat-wa';
 import { samarkanNama } from '@/lib/samaran';
+import { csrfHeaders } from '@/lib/csrf';
 
 /** diagnosis_prb bisa tersimpan sebagai array atau string JSON. */
 function daftarDiagnosis(diag: unknown): string[] {
@@ -359,7 +360,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                     <div className="flex items-center justify-between mb-3">
                                         <h5 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                                             <FileText className="w-4 h-4 text-teal-600" />
-                                            Informasi Program
+                                            Informasi Pasien
                                         </h5>
                                         {!formUbah && (
                                             <button
@@ -789,6 +790,8 @@ function PengingatWhatsapp({ pasien }: { pasien: PasienPRB }) {
     const jadwal = pasien.tanggal_jadwal_berikutnya;
     const [lihatPesan, setLihatPesan] = useState(false);
     const [pesanUbahan, setPesanUbahan] = useState<string | null>(null); // null = pakai pesan awal
+    const [histori, setHistori] = useState<RiwayatPengingatWa[]>(pasien.riwayat_pengingat_wa ?? []);
+    const [lihatSemua, setLihatSemua] = useState(false);
 
     let alasanTidakBisa: string | null = null;
     if (pasien.status !== 'Aktif') alasanTidakBisa = `Pasien ${pasien.status} tidak perlu diingatkan.`;
@@ -798,6 +801,24 @@ function PengingatWhatsapp({ pasien }: { pasien: PasienPRB }) {
     const pesanAwal = !alasanTidakBisa && jadwal ? pesanPengingat(jadwal, pasien.fktp_asal, new Date(), pasien.nama_samaran) : '';
     const pesan = pesanUbahan ?? pesanAwal;
     const tahap = jadwal ? LABEL_TAHAP[tahapPengingat(jadwal)] : null;
+
+    // Buka WhatsApp, lalu catat pengiriman di histori (tidak menghalangi pengiriman)
+    const kirim = () => {
+        window.open(tautanWhatsapp(pasien.no_whatsapp!, pesan), '_blank', 'noopener');
+        fetch(`/pasien/${pasien.id}/pengingat-wa`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+            body: JSON.stringify({ tahap, jadwal_target: jadwal }),
+        })
+            .then(res => (res.ok ? res.json() : null))
+            .then((data: RiwayatPengingatWa[] | null) => { if (data) setHistori(data); })
+            .catch(() => {});
+    };
+    const fmtWaktu = (iso: string) => new Date(iso).toLocaleString('id-ID', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    const historiTampil = lihatSemua ? histori : histori.slice(0, 3);
 
     return (
         <div className="mt-4 bg-emerald-50/60 p-4 rounded-xl border border-emerald-100">
@@ -819,7 +840,7 @@ function PengingatWhatsapp({ pasien }: { pasien: PasienPRB }) {
                 <>
                     <button
                         type="button"
-                        onClick={() => window.open(tautanWhatsapp(pasien.no_whatsapp!, pesan), '_blank', 'noopener')}
+                        onClick={kirim}
                         disabled={!pesan.trim()}
                         className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-3 py-2 transition-colors"
                     >
@@ -860,6 +881,35 @@ function PengingatWhatsapp({ pasien }: { pasien: PasienPRB }) {
                     )}
                 </>
             )}
+
+            {/* Histori pengiriman WhatsApp */}
+            <div className="mt-3 pt-3 border-t border-emerald-100">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800 mb-1.5">
+                    Histori pengiriman ({histori.length})
+                </div>
+                {histori.length === 0 ? (
+                    <p className="text-xs text-slate-500">Belum ada pengingat yang dikirim.</p>
+                ) : (
+                    <ul className="space-y-1.5">
+                        {historiTampil.map(h => (
+                            <li key={h.id} className="text-xs text-slate-600 bg-white/70 border border-emerald-100 rounded-md px-2 py-1.5">
+                                <span className="font-medium text-slate-700">{fmtWaktu(h.dikirim_pada)}</span>
+                                {' · '}{h.petugas}
+                                {h.tahap && <span className="block text-[11px] text-slate-500">{h.tahap}{h.jadwal_target ? ` — jadwal ${h.jadwal_target.slice(0, 10).split('-').reverse().join('/')}` : ''}</span>}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {histori.length > 3 && (
+                    <button
+                        type="button"
+                        onClick={() => setLihatSemua(v => !v)}
+                        className="mt-1.5 text-[11px] text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+                    >
+                        {lihatSemua ? 'Tampilkan lebih sedikit' : `Lihat semua (${histori.length})`}
+                    </button>
+                )}
+            </div>
         </div>
     );
 }

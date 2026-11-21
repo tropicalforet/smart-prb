@@ -45,7 +45,7 @@ class ImportDataBulananTest extends TestCase
             $this->baris('PRB KPMA 001', '2018-09-07', '2026-03-20'),
             $this->baris('PRB KPMA 001', '2018-09-07', '2026-04-20'),
             $this->baris('PRB KPMA 001', '2018-09-07', '2026-05-28'),
-        ])->assertOk()->assertExactJson(['baru' => 1, 'diperbarui' => 2, 'duplikat' => 0, 'invalid' => 0]);
+        ])->assertOk()->assertJson(['baru' => 1, 'diperbarui' => 2, 'duplikat' => 0, 'invalid' => 0]);
 
         $pasien  = PasienPrb::where('noka', 'PRB KPMA 001')->firstOrFail();
         $riwayat = $pasien->riwayatPengambilanObat()->orderBy('tanggal_pengambilan')->get();
@@ -88,7 +88,7 @@ class ImportDataBulananTest extends TestCase
         ];
 
         $this->impor($rows)->assertOk();
-        $this->impor($rows)->assertOk()->assertExactJson(['baru' => 0, 'diperbarui' => 0, 'duplikat' => 2, 'invalid' => 0]);
+        $this->impor($rows)->assertOk()->assertJson(['baru' => 0, 'diperbarui' => 0, 'duplikat' => 2, 'invalid' => 0]);
 
         $this->assertSame(2, PasienPrb::where('noka', 'PRB SENO 039')->firstOrFail()->riwayatPengambilanObat()->count());
     }

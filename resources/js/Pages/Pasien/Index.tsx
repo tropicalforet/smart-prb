@@ -295,6 +295,7 @@ export default function PasienIndex({
                 filter_kepatuhan: filters.filter_kepatuhan || '',
                 filter_fktp: filters.filter_fktp || '',
                 filter_jenis_prb: filters.filter_jenis_prb || '',
+                filter_jumlah_diagnosis: filters.filter_jumlah_diagnosis || '',
                 filter_early_warning: filters.filter_early_warning || '',
                 filter_tindak_lanjut: filters.filter_tindak_lanjut || '',
             });
@@ -326,6 +327,7 @@ export default function PasienIndex({
                 filters.filter_kepatuhan && `Kepatuhan: ${filters.filter_kepatuhan}`,
                 diagnosisTerpilih.length > 0 && `Diagnosis: ${diagnosisTerpilih.join(', ')}`,
                 filters.filter_jenis_prb && `Jenis PRB: ${filters.filter_jenis_prb}`,
+                filters.filter_jumlah_diagnosis && `Jumlah diagnosis: ${filters.filter_jumlah_diagnosis === 'satu' ? 'satu diagnosis' : 'lebih dari satu'}`,
                 filters.filter_early_warning && `Early Warning: ${filters.filter_early_warning}`,
                 filters.filter_tindak_lanjut && `Tindak Lanjut: ${filters.filter_tindak_lanjut}`,
                 filters.search && `Pencarian: "${filters.search}"`,
@@ -437,12 +439,12 @@ export default function PasienIndex({
         <AppLayout title="Data Pasien PRB">
             <Head title="Data Pasien PRB" />
 
-            {/* Header Actions */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
-                <div className="flex-1 w-full xl:max-w-md">
+            {/* Header Actions — pencarian satu baris penuh agar mudah terlihat */}
+            <div className="flex flex-col gap-4 mb-6">
+                <div className="w-full">
                     <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="w-5 h-5 text-slate-400 group-focus-within:text-teal-500 transition-colors" />
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <Search className="w-6 h-6 text-slate-400 group-focus-within:text-teal-500 transition-colors" />
                         </div>
 
                         <input
@@ -453,7 +455,7 @@ export default function PasienIndex({
                                 setSearchTerm(e.target.value)
                             }
                             onKeyDown={handleSearch}
-                            className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all"
+                            className="block w-full pl-13 pr-4 py-3.5 text-base bg-white border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all placeholder:text-slate-400"
                         />
                     </div>
                 </div>
@@ -675,6 +677,23 @@ export default function PasienIndex({
                                     <option value="Lama">
                                         PRB Lama
                                     </option>
+                                </select>
+                            </div>
+
+                            {/* Jumlah diagnosis per pasien (NOKA) */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                    Jumlah Diagnosis
+                                </label>
+
+                                <select
+                                    value={filters.filter_jumlah_diagnosis || ''}
+                                    onChange={(e) => applyFilters({ filter_jumlah_diagnosis: e.target.value })}
+                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                >
+                                    <option value="">Semua Pasien</option>
+                                    <option value="lebih_dari_satu">Lebih dari satu diagnosis</option>
+                                    <option value="satu">Satu diagnosis</option>
                                 </select>
                             </div>
 

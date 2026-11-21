@@ -29,6 +29,17 @@ export interface PasienPRB {
     // Relations
     riwayat_pengambilan_obat?: RiwayatPengambilanObat[];
     riwayat_tindak_lanjut?: RiwayatTindakLanjut[];
+    riwayat_pengingat_wa?: RiwayatPengingatWa[];
+}
+
+/** Catatan pengiriman pengingat WhatsApp (dicatat saat tombol Kirim ditekan). */
+export interface RiwayatPengingatWa {
+    id: string;
+    pasien_prb_id: string;
+    dikirim_pada: string;
+    petugas: string;
+    tahap: string | null;
+    jadwal_target: string | null;
 }
 
 export type DiagnosisPRB =
@@ -141,6 +152,7 @@ export interface Filters {
     filter_jenis_prb?: string;
     filter_early_warning?: string;
     filter_tindak_lanjut?: string; // kategori tindak lanjut terakhir
+    filter_jumlah_diagnosis?: string; // '' | 'lebih_dari_satu' | 'satu' — pasien (NOKA) dengan >1 diagnosis
     sort_by?: string;
     sort_order?: 'asc' | 'desc';
 }

@@ -41,6 +41,7 @@ class PasienPrbController extends Controller
         $filterJenisPrb = $request->input('filter_jenis_prb', '');
         $filterEarlyWarning = $request->input('filter_early_warning', '');
         $filterTindakLanjut = $request->input('filter_tindak_lanjut', '');
+        $filterJumlahDiagnosis = $request->input('filter_jumlah_diagnosis', '');
         
         // Sorting parameters
         $sortBy = $request->input('sort_by', 'prioritas_ews'); // default: paling mendesak di atas
@@ -107,6 +108,10 @@ class PasienPrbController extends Controller
 
         if ($filterTindakLanjut) {
             $this->terapkanFilterTindakLanjut($query, $filterTindakLanjut);
+        }
+
+        if ($filterJumlahDiagnosis) {
+            $this->terapkanFilterJumlahDiagnosis($query, $filterJumlahDiagnosis);
         }
 
         /*
@@ -351,6 +356,9 @@ class PasienPrbController extends Controller
 
                     'filter_tindak_lanjut' =>
                         $filterTindakLanjut,
+
+                    'filter_jumlah_diagnosis' =>
+                        $filterJumlahDiagnosis,
                     
                     'sort_by' =>
                         $sortBy,
@@ -619,6 +627,9 @@ class PasienPrbController extends Controller
                     'tanggal_jam',
                     'desc'
                 ),
+
+            'riwayatPengingatWa' =>
+                fn ($q) => $q->orderByDesc('dikirim_pada'),
         ]);
 
         // Evaluasi kepatuhan sesuai konteks:
@@ -844,6 +855,23 @@ class PasienPrbController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * Pasien (NOKA) yang muncul pada lebih dari satu diagnosis ('lebih_dari_satu')
+     * atau hanya satu diagnosis ('satu'). Semua baris diagnosis pasien tersebut
+     * ikut tampil, sehingga mudah dibandingkan.
+     */
+    private function terapkanFilterJumlahDiagnosis($query, string $nilai): void
+    {
+        $nokaMulti = fn ($q) => $q->select('noka')->from('pasien_prb')
+            ->whereNotNull('noka')->groupBy('noka')->havingRaw('COUNT(*) > 1');
+
+        match ($nilai) {
+            'lebih_dari_satu' => $query->whereIn('noka', $nokaMulti),
+            'satu'            => $query->whereNotIn('noka', $nokaMulti),
+            default           => null,
+        };
     }
 
     /**
@@ -1323,6 +1351,8 @@ class PasienPrbController extends Controller
             'data.*.tanggal_berobat'             => 'nullable|string',
             'data.*.tanggal_pengambilan'         => 'nullable|string',
             'data.*.tanggal_pengambilan_terakhir'=> 'nullable|string',
+            // Penanda baris Excel ("Sheet#12") untuk ringkasan impor
+            'data.*.baris_excel'                 => 'nullable|string|max:150',
         ]);
 
         // Satu data PRB = satu diagnosis: baris berisi beberapa diagnosis
@@ -1330,7 +1360,11 @@ class PasienPrbController extends Controller
         $rows = collect($validated['data'])->flatMap(function ($row) {
             $diagnosis = $row['diagnosis_prb'] ?? null;
             $daftar    = is_array($diagnosis) ? $diagnosis : explode(',', (string) $diagnosis);
-            $daftar    = array_values(array_unique(array_filter(array_map(fn ($d) => trim((string) $d), $daftar))));
+            // Dibakukan dulu (BPH → Hipertensi) agar "HT, BPH" menjadi satu data,
+            // bukan dua transaksi untuk diagnosis yang sama.
+            $daftar    = array_values(array_unique(array_filter(array_map(
+                fn ($d) => PasienPrb::bakukanDiagnosis((string) $d) ?? trim((string) $d), $daftar
+            ))));
 
             // No. Faktur harus unik per riwayat → diagnosis ke-2 dst. diberi akhiran
             return count($daftar) > 1
@@ -1352,7 +1386,29 @@ class PasienPrbController extends Controller
         // Key: 'faktur_{noFaktur}' atau 'noka_tgl_{noka}_{tanggalBerobat}'
         $processedKeys = [];
 
+        // Ringkasan per pasien (bukan per transaksi): NOKA + diagnosis yang
+        // tersimpan, dan baris Excel yang gagal. Hasil tiap baris dicatat
+        // dari perubahan penghitung saat baris berikutnya mulai diproses.
+        $pasienTersimpan = [];   // [noka => [diagnosis => true]]
+        $barisGagal      = [];   // ["Sheet#12" => true]
+        $barisSebelumnya = null; // [row, baru+diperbarui, invalid]
+        $catatHasilBaris = function () use (&$barisSebelumnya, &$pasienTersimpan, &$barisGagal, &$jumlahBaru, &$jumlahDiperbarui, &$jumlahInvalid) {
+            if (!$barisSebelumnya) return;
+            [$r, $tersimpan, $gagal] = $barisSebelumnya;
+            $noka = trim((string) ($r['noka'] ?? ''));
+            if ($jumlahBaru + $jumlahDiperbarui > $tersimpan && $noka !== '') {
+                $d = (array) ($r['diagnosis_prb'] ?? []);
+                $pasienTersimpan[$noka][PasienPrb::bakukanDiagnosis((string) ($d[0] ?? '')) ?? '-'] = true;
+            }
+            if ($jumlahInvalid > $gagal && !empty($r['baris_excel'])) {
+                $barisGagal[$r['baris_excel']] = true;
+            }
+            $barisSebelumnya = null;
+        };
+
         foreach ($rows as $row) {
+            $catatHasilBaris();
+            $barisSebelumnya = [$row, $jumlahBaru + $jumlahDiperbarui, $jumlahInvalid];
             // ----------------------------------------------------------------
             // LANGKAH 1: NORMALISASI FIELD
             // ----------------------------------------------------------------
@@ -1545,8 +1601,18 @@ class PasienPrbController extends Controller
                             $dataBerobatBerubah   = $tglBerobatDb && $tglBerobatDb !== $tglBerobatLama;
                             $dataPengambilanBerubah = $tglAmbilDb  && $tglAmbilDb   !== $tglAmbilLama;
 
-                            if ($dataPengambilanBerubah || $dataBerobatBerubah) {
-                                // Data berubah → UPDATE riwayat lama
+                            if ($dataPengambilanBerubah && $tglAmbilLama
+                                && substr($tglAmbilLama, 0, 7) !== substr($tglAmbilDb, 0, 7)) {
+                                // Faktur sama, pengambilan di BULAN LAIN (mis. 31/03 lalu
+                                // 01/05) → transaksi baru; histori bulan sebelumnya tetap
+                                // ada dan tidak tertimpa.
+                                $noFaktur = $noFaktur . '-' . str_replace('-', '', $tglAmbilDb);
+                                if (RiwayatPengambilanObat::where('no_faktur', $noFaktur)->exists()) {
+                                    $isDuplicate     = true;
+                                    $duplicateReason = "No. Faktur sudah ada dengan data yang sama: {$noFaktur}";
+                                }
+                            } elseif ($dataPengambilanBerubah || $dataBerobatBerubah) {
+                                // Data berubah di bulan yang sama (koreksi) → UPDATE riwayat lama
                                 $isUpdateFaktur     = true;
                                 $riwayatUntukUpdate = $riwayatLama;
                             } else {
@@ -1907,6 +1973,7 @@ class PasienPrbController extends Controller
             }
 
         } // akhir foreach $rows
+        $catatHasilBaris();
 
         $this->auditLogService->importExcel(
             $jumlahBaru, $jumlahDiperbarui, $jumlahDuplikat, $jumlahInvalid
@@ -1920,6 +1987,9 @@ class PasienPrbController extends Controller
                 'diperbarui' => $jumlahDiperbarui,
                 'duplikat'   => $jumlahDuplikat,
                 'invalid'    => $jumlahInvalid,
+                // NOKA → diagnosis yang tersimpan (untuk hitung pasien unik)
+                'pasien'       => array_map('array_keys', $pasienTersimpan),
+                'baris_gagal'  => array_keys($barisGagal),
             ]);
         }
 
@@ -1935,6 +2005,57 @@ class PasienPrbController extends Controller
                 'success',
                 "Import selesai: {$jumlahBaru} data baru, {$jumlahDiperbarui} data diperbarui, {$jumlahDuplikat} duplikat dilewati, {$jumlahInvalid} gagal."
             );
+    }
+
+    /**
+     * Simpan baris Excel yang tidak valid (sudah diperiksa di browser) ke
+     * tabel buffer resep_import, beserta alasannya. Tidak masuk ke data
+     * pasien maupun riwayat — hanya catatan agar jumlah "Gagal karena
+     * tidak valid" sama dengan rincian saat impor dan dapat ditelusuri.
+     */
+    public function importTidakValid(Request $request)
+    {
+        $validated = $request->validate([
+            'data'                       => 'required|array|min:1|max:1000',
+            'data.*.kode_pasien'         => 'nullable|string|max:50',
+            'data.*.noka'                => 'nullable|string|max:50',
+            'data.*.fktp_asal'           => 'nullable|string|max:255',
+            'data.*.diagnosis_prb'       => 'nullable',
+            'data.*.no_faktur'           => 'nullable|string|max:100',
+            'data.*.tanggal_mulai_prb'   => 'nullable|string',
+            'data.*.tanggal_berobat'     => 'nullable|string',
+            'data.*.tanggal_pengambilan' => 'nullable|string',
+            'data.*.keterangan'          => 'required|string|max:2000',
+        ]);
+
+        $tanggal = function ($v) {
+            if (empty($v)) return null;
+            try {
+                return Carbon::parse($v)->toDateString();
+            } catch (\Throwable) {
+                return null;
+            }
+        };
+
+        foreach ($validated['data'] as $row) {
+            $diagnosis = $row['diagnosis_prb'] ?? [];
+            $diagnosis = is_array($diagnosis) ? $diagnosis : array_filter(array_map('trim', explode(',', (string) $diagnosis)));
+
+            ResepImport::create([
+                'kode_pasien'         => $row['kode_pasien'] ?? null,
+                'noka'                => trim((string) ($row['noka'] ?? '')) ?: '-',
+                'fktp_asal'           => trim((string) ($row['fktp_asal'] ?? '')) ?: '-',
+                'diagnosis_prb'       => array_values($diagnosis),
+                'no_faktur'           => $row['no_faktur'] ?? null,
+                'tanggal_berobat'     => $tanggal($row['tanggal_berobat'] ?? null),
+                'tanggal_pengambilan' => $tanggal($row['tanggal_pengambilan'] ?? null),
+                'tanggal_mulai_prb'   => $tanggal($row['tanggal_mulai_prb'] ?? null),
+                'status_import'       => 'invalid',
+                'keterangan_import'   => $row['keterangan'],
+            ]);
+        }
+
+        return response()->json(['invalid' => count($validated['data'])]);
     }
 
     /**
@@ -1956,6 +2077,7 @@ class PasienPrbController extends Controller
         $filterFktp = $request->input('filter_fktp', '');
         $filterEarlyWarning = $request->input('filter_early_warning', '');
         $filterTindakLanjut = $request->input('filter_tindak_lanjut', '');
+        $filterJumlahDiagnosis = $request->input('filter_jumlah_diagnosis', '');
         $filterPeriode = $request->input('filter_periode', '');
 
         $query = PasienPrb::with('riwayatPengambilanObat')->orderBy('kode_pasien', 'asc');
@@ -1973,7 +2095,7 @@ class PasienPrbController extends Controller
 
         if ($ids !== null) {
             $query->whereIn('id', $ids);
-            $search = $filterStatus = $filterKepatuhan = $filterFktp = $filterEarlyWarning = $filterTindakLanjut = '';
+            $search = $filterStatus = $filterKepatuhan = $filterFktp = $filterEarlyWarning = $filterTindakLanjut = $filterJumlahDiagnosis = '';
             $filterDiagnosis = [];
         }
 
@@ -1995,6 +2117,10 @@ class PasienPrbController extends Controller
 
         if ($filterTindakLanjut) {
             $this->terapkanFilterTindakLanjut($query, $filterTindakLanjut);
+        }
+
+        if ($filterJumlahDiagnosis) {
+            $this->terapkanFilterJumlahDiagnosis($query, $filterJumlahDiagnosis);
         }
 
         if ($filterFktp) {

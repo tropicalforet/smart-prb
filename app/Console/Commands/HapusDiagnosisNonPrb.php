@@ -9,8 +9,8 @@ use Illuminate\Console\Command;
 class HapusDiagnosisNonPrb extends Command
 {
     /**
-     * Keluarkan data PRB dengan diagnosis di luar 9 diagnosis PRB (mis. GOUT,
-     * DLP, CHF dari file apotek). Histori pengambilan & tindak lanjutnya ikut
+     * Keluarkan data PRB dengan diagnosis di luar 9 diagnosis PRB yang juga
+     * tidak ada di pemetaan diagnosis (mis. "HY"). Histori pengambilan & tindak lanjutnya ikut
      * terhapus. Penghapusan dicatat di Audit Log.
      *
      * Backup database dulu sebelum menjalankan tanpa --dry-run.
@@ -26,8 +26,10 @@ class HapusDiagnosisNonPrb extends Command
         $daftar = PasienPrb::orderBy('kode_pasien')->get()->filter(function (PasienPrb $p) {
             $diagnosis = array_filter((array) $p->diagnosis_prb);
 
+            // Diagnosis yang bisa dipetakan (mis. CHF → Penyakit Jantung) tidak
+            // dihapus — dipetakan lewat prb:petakan-diagnosis.
             return !$diagnosis
-                || collect($diagnosis)->contains(fn ($d) => !in_array($d, PasienPrb::DIAGNOSIS_OPTIONS, true));
+                || collect($diagnosis)->contains(fn ($d) => PasienPrb::bakukanDiagnosis($d) === null);
         });
 
         $perDiagnosis = $daftar->groupBy(fn (PasienPrb $p) => implode(', ', (array) $p->diagnosis_prb) ?: '(kosong)')
