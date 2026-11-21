@@ -281,7 +281,7 @@ export default function PasienIndex({
             return acc;
         }, {});
         const pasienUnik = jumlahPasienUnik(rows.map((row) => row['NOKA']));
-        return `Jumlah pasien: ${pasienUnik} (${rows.length} data diagnosis)  ·  ` + Object.entries(jumlah).map(([st, n]) => `${st}: ${n}`).join('  ·  ');
+        return `Jumlah pasien: ${pasienUnik}  ·  ` + Object.entries(jumlah).map(([st, n]) => `${st}: ${n}`).join('  ·  ');
     };
 
     // Export data — Excel atau PDF, isi sama (sesuai filter yang aktif)
@@ -985,7 +985,7 @@ export default function PasienIndex({
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[210px]">
-                                    Diagnosis & Asal
+                                    Diagnosis & FKTP
                                 </th>
 
                                 <th className="px-5 py-4 min-w-[130px]">
@@ -1089,7 +1089,7 @@ export default function PasienIndex({
                                                     </div>
                                                 </td>
 
-                                                {/* 2. DIAGNOSIS & ASAL */}
+                                                {/* 2. DIAGNOSIS & FKTP */}
                                                 <td className="px-5 py-4 min-w-[180px]">
                                                     <div className="font-medium text-slate-700 whitespace-normal leading-snug">
                                                         {(() => {
@@ -1299,8 +1299,13 @@ export default function PasienIndex({
                 {pasienList.length > 0 && (
                     <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-sm text-slate-500">
                         <span>
-                            Menampilkan {pasienList.length} data diagnosis
-                            {' · '}{jumlahPasienUnik(pasienList.map((p) => p.noka))} pasien
+                            {(() => {
+                                // Baris = pasien kecuali pasien dengan diagnosis bertanggal berbeda
+                                const pasien = jumlahPasienUnik(pasienList.map((p) => p.noka));
+                                return pasienList.length === pasien
+                                    ? `Menampilkan ${pasien} pasien`
+                                    : `Menampilkan ${pasienList.length} baris · ${pasien} pasien`;
+                            })()}
                         </span>
                         {selectedIds.size > 0 && (
                             <span className="text-teal-600 font-medium">

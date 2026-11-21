@@ -13,8 +13,7 @@ import { Button } from '@/Components/ui/Button';
 
 interface RekapData {
     fktp: string;
-    total: number; // pasien unik (NOKA)
-    total_diagnosis: number;
+    total: number; // pasien (NOKA unik) = patuh + tidak_patuh
     patuh: number;
     tidak_patuh: number;
     persentase_patuh: number | null;
@@ -22,8 +21,7 @@ interface RekapData {
 
 interface Props {
     summary: {
-        total: number; // pasien unik (NOKA)
-        total_diagnosis: number;
+        total: number; // pasien (NOKA unik) = patuh + tidak_patuh
         patuh: number;
         tidak_patuh: number;
         persentase_patuh: number | null;
@@ -80,7 +78,6 @@ export default function RekapIndex({
         {
             title: 'Total Pasien',
             value: summary.total,
-            subtitle: `${summary.total_diagnosis} data diagnosis`,
             icon: Users,
             gradient: 'from-slate-600 to-slate-700',
         },
@@ -202,12 +199,7 @@ export default function RekapIndex({
                             {rekapFktp.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 font-medium text-slate-800 whitespace-nowrap">{row.fktp}</td>
-                                    <td className="px-6 py-4 text-right font-medium text-slate-700">
-                                        {row.total}
-                                        {row.total_diagnosis !== row.total && (
-                                            <span className="block text-xs font-normal text-slate-400">{row.total_diagnosis} diagnosis</span>
-                                        )}
-                                    </td>
+                                    <td className="px-6 py-4 text-right font-medium text-slate-700">{row.total}</td>
                                     <td className="px-6 py-4 text-right text-emerald-600 font-medium">{row.patuh}</td>
                                     <td className="px-6 py-4 text-right text-rose-600 font-medium">{row.tidak_patuh}</td>
                                     <td className="px-6 py-4 text-right whitespace-nowrap">
@@ -232,11 +224,6 @@ export default function RekapIndex({
                         </tbody>
                     </table>
                 </div>
-                {rekapFktp.length > 0 && (
-                    <p className="px-6 py-3 border-t border-slate-100 text-xs text-slate-500">
-                        Total Pasien dihitung per pasien; Patuh dan Tidak Teratur per diagnosis.
-                    </p>
-                )}
             </div>
         </AppLayout>
     );

@@ -26,6 +26,9 @@ export interface PasienPRB {
     tanggal_realisasi_aktif?: string | null;  // tanggal realisasi siklus aktif/periode
     riwayat_id_aktif?: string | null;          // UUID riwayat siklus aktif, null jika belum ada
     periode_penelitian?: string | null;        // mis. "Maret–Mei 2026" — histori dibatasi ke periode ini
+    // Baris gabungan: beberapa diagnosis satu pasien dengan tanggal mulai & ambil yang sama
+    anggota_ids?: string[];        // id data PRB di baris ini (aksi berlaku untuk semuanya)
+    diagnosis_kelompok?: string[]; // semua diagnosis di baris ini (dari detail pasien)
     // Relations
     riwayat_pengambilan_obat?: RiwayatPengambilanObat[];
     riwayat_tindak_lanjut?: RiwayatTindakLanjut[];

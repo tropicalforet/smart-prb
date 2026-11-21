@@ -160,6 +160,50 @@ class PasienPrb extends Model
     ];
 
     /**
+     * Kunci baris gabungan: data PRB satu pasien (NOKA sama) yang tanggal mulai
+     * PRB dan seluruh tanggal pengambilannya sama tampil sebagai SATU baris
+     * dengan beberapa diagnosis; bila tanggalnya berbeda, baris terpisah.
+     * Penyimpanan tetap per diagnosis (jadwal & kepatuhan sendiri-sendiri).
+     */
+    public static function kunciKelompok(self $p): string
+    {
+        $tanggal = ($p->relationLoaded('riwayatPengambilanObat')
+                ? $p->riwayatPengambilanObat->pluck('tanggal_pengambilan')
+                : $p->riwayatPengambilanObat()->pluck('tanggal_pengambilan'))
+            ->filter()->map(fn ($t) => substr((string) ($t instanceof \DateTimeInterface ? $t->format('Y-m-d') : $t), 0, 10))
+            ->sort()->values()->implode(',');
+
+        return strtoupper(preg_replace('/\s+/', '', (string) $p->noka)) . '|'
+            . ($p->tanggal_mulai_prb?->toDateString() ?? '-') . '|' . $tanggal;
+    }
+
+    /**
+     * Data PRB yang tampil satu baris dengan data ini (termasuk dirinya),
+     * urut sesuai urutan 9 diagnosis. Aksi pada baris gabungan (realisasi,
+     * tindak lanjut, status, hapus, …) berlaku untuk semuanya.
+     *
+     * @return \Illuminate\Support\Collection<int, self>
+     */
+    public function kelompok(): \Illuminate\Support\Collection
+    {
+        $kunci = self::kunciKelompok($this);
+
+        return self::where('noka', $this->noka)->with('riwayatPengambilanObat')->get()
+            ->filter(fn (self $p) => self::kunciKelompok($p) === $kunci)
+            ->sortBy(fn (self $p) => self::urutanDiagnosis($p))
+            ->values();
+    }
+
+    /** Urutan tampil diagnosis (sesuai DIAGNOSIS_OPTIONS). */
+    public static function urutanDiagnosis(self|array $p): int
+    {
+        $d = (array) data_get($p, 'diagnosis_prb');
+        $i = array_search($d[0] ?? null, self::DIAGNOSIS_OPTIONS, true);
+
+        return $i === false ? 99 : $i;
+    }
+
+    /**
      * Jumlah pasien unik (orang) berdasarkan NOKA. Satu pasien dengan beberapa
      * diagnosis punya beberapa data PRB, tetapi dihitung satu kali. Data tanpa
      * NOKA tidak bisa dipastikan sama/berbeda, jadi dihitung per data.

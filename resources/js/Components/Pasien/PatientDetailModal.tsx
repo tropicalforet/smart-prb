@@ -248,8 +248,12 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
         );
     }
 
+    // Baris gabungan: beberapa diagnosis dengan tanggal mulai & ambil yang sama
+    const diagnosisTampil = pasien.diagnosis_kelompok?.length ? pasien.diagnosis_kelompok : daftarDiagnosis(pasien.diagnosis_prb);
+    const barisGabungan = (pasien.anggota_ids?.length ?? 1) > 1;
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Detail: ${pasien.kode_pasien} · ${(pasien.diagnosis_prb ?? []).join(', ')}`} maxWidth="4xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={`Detail: ${pasien.kode_pasien} · ${diagnosisTampil.join(', ')}`} maxWidth="4xl">
             <div className="flex flex-col lg:flex-row gap-6">
                 {/* Left Column: Fixed Profile Summary */}
                 <div className="lg:w-1/3 space-y-4">
@@ -287,18 +291,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                             <div className="flex items-center gap-3 text-slate-600">
                                 <Stethoscope className="w-4 h-4 text-slate-400 shrink-0" />
                                 <span className="font-medium">
-                                    {(() => {
-                                        let diag = pasien.diagnosis_prb;
-                                        if (typeof diag === 'string') {
-                                            try {
-                                                const parsed = JSON.parse(diag);
-                                                if (Array.isArray(parsed)) diag = parsed;
-                                            } catch (e) {}
-                                        }
-                                        return Array.isArray(diag) && diag.length > 0 
-                                            ? diag.join(', ') 
-                                            : (diag || '-');
-                                    })()}
+                                    {diagnosisTampil.length > 0 ? diagnosisTampil.join(', ') : '-'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-3 text-slate-600">
@@ -444,6 +437,14 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                 </select>
                                             </div>
 
+                                            {barisGabungan ? (
+                                                // Beberapa diagnosis satu baris: perubahan berlaku untuk semuanya,
+                                                // diagnosis tidak diubah dari sini
+                                                <div>
+                                                    <span className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB</span>
+                                                    <p className="text-sm text-slate-700">{diagnosisTampil.join(', ')}</p>
+                                                </div>
+                                            ) : (
                                             <fieldset>
                                                 <legend className="block text-xs font-medium text-slate-700 mb-1">Diagnosis PRB * <span className="font-normal text-slate-500">(satu diagnosis per data; diagnosis lain lewat Tambah)</span></legend>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -465,6 +466,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                     <p className="text-xs text-rose-500 mt-1">Pilih minimal satu diagnosis.</p>
                                                 )}
                                             </fieldset>
+                                            )}
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div>

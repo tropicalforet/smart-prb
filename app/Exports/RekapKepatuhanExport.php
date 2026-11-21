@@ -113,6 +113,9 @@ class RekapKepatuhanExport implements
                     ? $tindakLanjutTerakhir->tindakan . ' (' . 
                       Carbon::parse($tindakLanjutTerakhir->created_at)->format('d/m/Y') . ')'
                     : '-',
+                // untuk menggabung baris; tidak ikut diekspor
+                '_kelompok' => PasienPrb::kunciKelompok($pasien),
+                '_urut' => PasienPrb::urutanDiagnosis($pasien),
             ];
         });
 
@@ -126,7 +129,13 @@ class RekapKepatuhanExport implements
             });
         }
 
-        return $data->values();
+        // Sama dengan Data Pasien: diagnosis satu pasien dengan tanggal mulai &
+        // ambil yang sama menjadi satu baris.
+        return $data->groupBy('_kelompok')->map(function ($g) {
+            $baris = $g->first();
+            $baris['diagnosis_prb'] = $g->sortBy('_urut')->pluck('diagnosis_prb')->unique()->implode(', ');
+            return collect($baris)->except(['_kelompok', '_urut'])->all();
+        })->values();
     }
 
     /**

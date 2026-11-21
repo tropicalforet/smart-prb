@@ -58,6 +58,12 @@ class RekapKepatuhanController extends Controller
             ];
         });
 
+        // Per PASIEN: beberapa diagnosis satu pasien dihitung satu kali
+        // (status gabungan, Tidak Teratur didahulukan — KepatuhanService::statusPasien).
+        $allPasien = KepatuhanService::perPasien(
+            $allPasien->map(fn ($p) => $p + ['status' => $p['status_kepatuhan']])
+        )->map(fn ($p) => array_merge($p, ['status_kepatuhan' => $p['status']]))->values();
+
         // Rekap hanya memuat pasien yang sudah dinilai (Patuh / Tidak Teratur).
         // Dalam Toleransi, Belum Jatuh Tempo, dan Tidak Ada Transaksi belum
         // atau tidak dapat dinilai, jadi tidak ditampilkan maupun dihitung.
@@ -70,12 +76,10 @@ class RekapKepatuhanController extends Controller
             });
         }
 
-        // 3. Agregasi Global — Patuh & Tidak Teratur dihitung per diagnosis
-        // (jadwal obat tiap diagnosis terpisah); Total Pasien = orang (NOKA
-        // unik), jadi pasien dengan dua diagnosis dihitung satu kali.
+        // 3. Agregasi Global — semua per pasien: Total = Patuh + Tidak Teratur
         $totalPatuh      = $allPasien->where('status_kepatuhan', 'Patuh')->count();
         $totalTidakPatuh = $allPasien->where('status_kepatuhan', 'Tidak Teratur')->count();
-        $totalPasien     = PasienPrb::jumlahPasienUnik($allPasien);
+        $totalPasien     = $allPasien->count();
         // 4. Agregasi per FKTP
         $rekapFktpData = [];
         $grouped = $allPasien->groupBy('fktp');
@@ -85,8 +89,7 @@ class RekapKepatuhanController extends Controller
             $tidakPatuhFktp = $patients->where('status_kepatuhan', 'Tidak Teratur')->count();
             $rekapFktpData[] = [
                 'fktp'             => $fktp ?: 'Tanpa FKTP',
-                'total'            => PasienPrb::jumlahPasienUnik($patients),
-                'total_diagnosis'  => $patients->count(),
+                'total'            => $patients->count(),
                 'patuh'            => $patuhFktp,
                 'tidak_patuh'      => $tidakPatuhFktp,
                 'persentase_patuh' => KepatuhanService::persentasePatuh($patuhFktp, $tidakPatuhFktp),
@@ -119,7 +122,6 @@ class RekapKepatuhanController extends Controller
         return Inertia::render('Rekap/Index', [
             'summary' => [
                 'total'             => $totalPasien,
-                'total_diagnosis'   => $allPasien->count(),
                 'patuh'             => $totalPatuh,
                 'tidak_patuh'       => $totalTidakPatuh,
                 'persentase_patuh'  => KepatuhanService::persentasePatuh($totalPatuh, $totalTidakPatuh),

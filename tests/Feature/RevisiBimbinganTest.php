@@ -400,9 +400,9 @@ class RevisiBimbinganTest extends TestCase
         $this->assertTrue(PasienPrb::where('kode_pasien', 'PRB-77-2')->exists());
         $this->assertTrue(PasienPrb::where('kode_pasien', 'PRB-88-2')->exists());
 
-        // Pencarian kode menampilkan semua diagnosisnya
+        // Pencarian kode menampilkan semua diagnosisnya — tanggalnya sama → satu baris
         $this->get(route('pasien.index', ['search' => 'PRB-1215']))
-            ->assertInertia(fn ($p) => $p->has('pasienList', 3));
+            ->assertInertia(fn ($p) => $p->has('pasienList', 1)->has('pasienList.0.anggota_ids', 3)->has('pasienList.0.diagnosis_prb', 3));
     }
 
     // ── Tanggal evaluasi bawaan = akhir periode penelitian ─────────────

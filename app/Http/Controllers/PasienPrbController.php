@@ -245,6 +245,10 @@ class PasienPrbController extends Controller
                         // "Terakhir Ambil Obat" konsisten dengan mode/periode
                         'tanggal_pengambilan_terakhir' =>
                             $tglTerakhirDisplay,
+
+                        // NOKA + mulai PRB + tanggal ambil → baris gabungan
+                        'kunci_kelompok' =>
+                            PasienPrb::kunciKelompok($pasien),
                     ]
                 );
             });
@@ -282,6 +286,9 @@ class PasienPrbController extends Controller
                 ->filter(fn($p) => in_array($p['early_warning'] ?? '', $matchValues))
                 ->values();
         }
+
+        // Satu pasien, beberapa diagnosis, tanggal mulai & ambil sama → satu baris
+        $pasienAll = self::gabungBarisDiagnosis($pasienAll);
 
         /*
          * Sort data pasien — opsi mengikuti kolom tabel, urut kiri → kanan:
@@ -659,6 +666,8 @@ class PasienPrbController extends Controller
                 ->values()
         );
 
+        $kelompok = $pasien->kelompok();
+
         $data = array_merge(
             $pasien->toArray(),
             [
@@ -686,6 +695,13 @@ class PasienPrbController extends Controller
                 // Label periode penelitian untuk tab Histori, mis. "Maret–Mei 2026"
                 'periode_penelitian' =>
                     KepatuhanService::labelPeriodePenelitian(),
+
+                // Baris gabungan: semua diagnosis & id data PRB di baris ini
+                'anggota_ids' =>
+                    $kelompok->pluck('id')->all(),
+
+                'diagnosis_kelompok' =>
+                    $kelompok->flatMap(fn ($p) => (array) $p->diagnosis_prb)->unique()->values()->all(),
             ]
         );
 
@@ -768,75 +784,87 @@ class PasienPrbController extends Controller
                 'nullable|required_if:status,Pasif|string',
         ]);
 
-        // NOKA + diagnosis harus unik (satu data PRB per diagnosis)
-        $bentrok = PasienPrb::where('noka', $validated['noka'])
-            ->where('kunci_diagnosis', PasienPrb::kunciDiagnosis($validated['diagnosis_prb']))
-            ->where('id', '!=', $pasien->id)
-            ->exists();
-        if ($bentrok) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'diagnosis_prb' => 'NOKA ini sudah punya data PRB untuk diagnosis tersebut.',
-            ]);
-        }
-
-        /*
-         * Cek tanggal pengambilan terbaru.
-         *
-         * Jika field kosong tetapi pasien sudah memiliki
-         * riwayat pengambilan, gunakan riwayat terakhir.
-         *
-         * Tujuannya agar pasien lama tidak berubah
-         * menjadi pasien baru secara tidak sengaja.
-         */
-        $tanggalTerakhir =
-            $validated[
-                'tanggal_pengambilan_terakhir'
-            ] ?? null;
-
-        if (empty($tanggalTerakhir)) {
-            $riwayatTerakhir =
-                $pasien
-                    ->riwayatPengambilanObat()
-                    ->latest(
-                        'tanggal_pengambilan'
-                    )
-                    ->first();
-
-            if ($riwayatTerakhir) {
-                $tanggalTerakhir =
-                    $riwayatTerakhir
-                        ->tanggal_pengambilan
-                        ?->toDateString();
-
-                $validated[
-                    'tanggal_pengambilan_terakhir'
-                ] = $tanggalTerakhir;
+        // Baris gabungan (beberapa diagnosis, tanggal sama): data bersama
+        // (NOKA, FKTP, mulai PRB, status, WA, nama) diterapkan ke semua
+        // diagnosisnya; diagnosis hanya diubah pada data yang dibuka.
+        DB::transaction(function () use ($pasien, $validated, $sebelum) {
+        foreach ($this->anggotaBaris($pasien) as $anggota) {
+            $v = $validated;
+            if ($anggota->id !== $pasien->id) {
+                $v['diagnosis_prb'] = (array) $anggota->diagnosis_prb;
             }
+            $sebelumAnggota = $anggota->id === $pasien->id ? $sebelum : AuditLogService::snapshotPasien($anggota);
+            // NOKA + diagnosis harus unik (satu data PRB per diagnosis)
+            $bentrok = PasienPrb::where('noka', $v['noka'])
+                ->where('kunci_diagnosis', PasienPrb::kunciDiagnosis($v['diagnosis_prb']))
+                ->where('id', '!=', $anggota->id)
+                ->exists();
+            if ($bentrok) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'diagnosis_prb' => 'NOKA ini sudah punya data PRB untuk diagnosis tersebut.',
+                ]);
+            }
+
+            /*
+             * Cek tanggal pengambilan terbaru.
+             *
+             * Jika field kosong tetapi pasien sudah memiliki
+             * riwayat pengambilan, gunakan riwayat terakhir.
+             *
+             * Tujuannya agar pasien lama tidak berubah
+             * menjadi pasien baru secara tidak sengaja.
+             */
+            $tanggalTerakhir =
+                $v[
+                    'tanggal_pengambilan_terakhir'
+                ] ?? null;
+
+            if (empty($tanggalTerakhir)) {
+                $riwayatTerakhir =
+                    $anggota
+                        ->riwayatPengambilanObat()
+                        ->latest(
+                            'tanggal_pengambilan'
+                        )
+                        ->first();
+
+                if ($riwayatTerakhir) {
+                    $tanggalTerakhir =
+                        $riwayatTerakhir
+                            ->tanggal_pengambilan
+                            ?->toDateString();
+
+                    $v[
+                        'tanggal_pengambilan_terakhir'
+                    ] = $tanggalTerakhir;
+                }
+            }
+
+            /*
+             * Hitung ulang jenis PRB,
+             * jatah obat, dan jadwal.
+             */
+            $this->setJenisDanJadwal(
+                $v,
+                $anggota
+            );
+
+            // Alasan pasif hanya untuk status Pasif
+            if ($v['status'] !== 'Pasif') {
+                $v['alasan_pasif'] = null;
+            }
+
+            $anggota->update(
+                $v
+            );
+
+            $this->auditLogService->ubahPasien(
+                $anggota->id,
+                $anggota->identitas(),
+                AuditLogService::selisih($sebelumAnggota, AuditLogService::snapshotPasien($anggota->fresh()))
+            );
         }
-
-        /*
-         * Hitung ulang jenis PRB,
-         * jatah obat, dan jadwal.
-         */
-        $this->setJenisDanJadwal(
-            $validated,
-            $pasien
-        );
-
-        // Alasan pasif hanya untuk status Pasif
-        if ($validated['status'] !== 'Pasif') {
-            $validated['alasan_pasif'] = null;
-        }
-
-        $pasien->update(
-            $validated
-        );
-
-        $this->auditLogService->ubahPasien(
-            $pasien->id,
-            $pasien->identitas(),
-            AuditLogService::selisih($sebelum, AuditLogService::snapshotPasien($pasien->fresh()))
-        );
+        });
 
         return redirect()
             ->back()
@@ -978,6 +1006,36 @@ class PasienPrbController extends Controller
      * Rapikan No. WhatsApp (opsional) sebelum validasi agar petugas boleh
      * mengetik 0812-..., +62 812 ..., dsb.
      */
+    /**
+     * Gabungkan baris data PRB satu pasien yang kunci_kelompok-nya sama
+     * (NOKA, tanggal mulai PRB, dan seluruh tanggal pengambilan sama) menjadi
+     * satu baris berisi beberapa diagnosis. anggota_ids = id data PRB di
+     * baris itu (aksi pada baris berlaku untuk semuanya).
+     */
+    public static function gabungBarisDiagnosis(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
+    {
+        return $rows->groupBy(fn ($p) => $p['kunci_kelompok'] ?? $p['id'])
+            ->map(function ($g) {
+                $g = $g->sortBy(fn ($p) => PasienPrb::urutanDiagnosis($p))->values();
+                $baris = $g->first();
+                $baris['diagnosis_prb'] = $g->flatMap(fn ($p) => (array) $p['diagnosis_prb'])->unique()->values()->all();
+                $baris['anggota_ids'] = $g->pluck('id')->all();
+                if ($g->count() > 1) {
+                    $baris['status_kepatuhan'] = KepatuhanService::statusPasien($g->pluck('status_kepatuhan'));
+                }
+                unset($baris['kunci_kelompok']);
+
+                return $baris;
+            })
+            ->values();
+    }
+
+    /** Data PRB yang dikenai aksi: satu baris gabungan = semua diagnosisnya. */
+    private function anggotaBaris(PasienPrb $pasien): \Illuminate\Support\Collection
+    {
+        return $pasien->kelompok();
+    }
+
     /** Singkatan FKTP ("KPMA") → nama lengkap sebelum divalidasi terhadap 8 FKTP. */
     private function bakukanFktpInput(Request $request): void
     {
@@ -1005,13 +1063,15 @@ class PasienPrbController extends Controller
     public function destroy(
         PasienPrb $pasien
     ) {
-        $this->auditLogService->hapusPasien(
-            $pasien->id,
-            $pasien->identitas(),
-            AuditLogService::selisih(AuditLogService::snapshotPasien($pasien), [])
-        );
-
-        $pasien->delete();
+        // Baris gabungan → semua diagnosisnya ikut dihapus
+        foreach ($this->anggotaBaris($pasien) as $anggota) {
+            $this->auditLogService->hapusPasien(
+                $anggota->id,
+                $anggota->identitas(),
+                AuditLogService::selisih(AuditLogService::snapshotPasien($anggota), [])
+            );
+            $anggota->delete();
+        }
 
         return redirect()
             ->back()
@@ -1038,7 +1098,11 @@ class PasienPrbController extends Controller
             'ids.*' => 'uuid',
         ]);
 
-        $query = PasienPrb::whereIn('id', $validated['ids']);
+        // Baris gabungan yang dicentang → semua diagnosisnya ikut terhapus
+        $ids = PasienPrb::whereIn('id', $validated['ids'])->get()
+            ->flatMap(fn (PasienPrb $p) => $this->anggotaBaris($p)->pluck('id'))
+            ->unique()->values()->all();
+        $query = PasienPrb::whereIn('id', $ids);
 
         // Identitas dicatat sebelum dihapus (rincian audit log)
         $terhapus = (clone $query)->orderBy('kode_pasien')->get()->map->identitas()->all();
@@ -1077,7 +1141,7 @@ class PasienPrbController extends Controller
      *   - riwayat.no_faktur
      *   - riwayat lain yang tidak terkait
      */
-    public function updateRealisasiEdit(
+    private function updateRealisasiEditSatu(
         Request $request,
         PasienPrb $pasien
     ) {
@@ -1120,11 +1184,102 @@ class PasienPrbController extends Controller
         return redirect()->back()->with('success', 'Tanggal kedatangan berhasil diperbarui.');
     }
 
+    /*
+     * =========================================================
+     * AKSI PADA BARIS GABUNGAN
+     * =========================================================
+     *
+     * Satu baris di Data Pasien bisa berisi beberapa diagnosis (data PRB
+     * dengan NOKA, mulai PRB, dan tanggal ambil yang sama). Aksi di bawah
+     * dijalankan untuk SEMUA diagnosis di baris itu agar tanggalnya tetap
+     * sama. Data yang dibuka diproses lebih dulu; pesannya yang ditampilkan.
+     */
+
+    /** @return array{0: PasienPrb, 1: \Illuminate\Support\Collection<int, PasienPrb>} data utama + diagnosis lain di barisnya */
+    private function utamaDanLainnya(PasienPrb $pasien): array
+    {
+        return [$pasien, $this->anggotaBaris($pasien)->reject(fn (PasienPrb $p) => $p->id === $pasien->id)->values()];
+    }
+
+    /** Riwayat diagnosis lain yang tanggal ambilnya sama dengan riwayat data utama. */
+    private function riwayatSetanggal(PasienPrb $anggota, ?RiwayatPengambilanObat $acuan): ?RiwayatPengambilanObat
+    {
+        $tanggal = $acuan?->tanggal_pengambilan?->toDateString();
+
+        return $tanggal
+            ? RiwayatPengambilanObat::where('pasien_prb_id', $anggota->id)->where('tanggal_pengambilan', 'like', $tanggal . '%')->first()
+            : null;
+    }
+
+    public function updateRealisasi(Request $request, PasienPrb $pasien)
+    {
+        [$utama, $lain] = $this->utamaDanLainnya($pasien);
+        $hasil = $this->updateRealisasiSatu($request, $utama);
+        foreach ($lain as $p) $this->updateRealisasiSatu($request, $p);
+
+        return $hasil;
+    }
+
+    public function updateRealisasiEdit(Request $request, PasienPrb $pasien)
+    {
+        [$utama, $lain] = $this->utamaDanLainnya($pasien);
+        $acuan = RiwayatPengambilanObat::where('pasien_prb_id', $utama->id)->find($request->input('riwayat_id'));
+        $hasil = $this->updateRealisasiEditSatu($request, $utama);
+        foreach ($lain as $p) {
+            if ($r = $this->riwayatSetanggal($p, $acuan)) {
+                $this->updateRealisasiEditSatu((clone $request)->merge(['riwayat_id' => $r->id]), $p);
+            }
+        }
+
+        return $hasil;
+    }
+
+    public function hapusRealisasi(PasienPrb $pasien, string $riwayat)
+    {
+        [$utama, $lain] = $this->utamaDanLainnya($pasien);
+        $acuan = RiwayatPengambilanObat::where('pasien_prb_id', $utama->id)->find($riwayat);
+        $hasil = $this->hapusRealisasiSatu($utama, $riwayat);
+        if ($acuan && !RiwayatPengambilanObat::whereKey($acuan->id)->exists()) { // utama berhasil dihapus
+            foreach ($lain as $p) {
+                if ($r = $this->riwayatSetanggal($p, $acuan)) $this->hapusRealisasiSatu($p, $r->id);
+            }
+        }
+
+        return $hasil;
+    }
+
+    public function updateJadwal(Request $request, PasienPrb $pasien)
+    {
+        [$utama, $lain] = $this->utamaDanLainnya($pasien);
+        $hasil = $this->updateJadwalSatu($request, $utama);
+        foreach ($lain as $p) $this->updateJadwalSatu($request, $p);
+
+        return $hasil;
+    }
+
+    public function updateTerakhirAmbil(Request $request, PasienPrb $pasien)
+    {
+        [$utama, $lain] = $this->utamaDanLainnya($pasien);
+        $hasil = $this->updateTerakhirAmbilSatu($request, $utama);
+        foreach ($lain as $p) $this->updateTerakhirAmbilSatu($request, $p);
+
+        return $hasil;
+    }
+
+    public function updateStatus(Request $request, PasienPrb $pasien)
+    {
+        [$utama, $lain] = $this->utamaDanLainnya($pasien);
+        $hasil = $this->updateStatusSatu($request, $utama);
+        foreach ($lain as $p) $this->updateStatusSatu($request, $p);
+
+        return $hasil;
+    }
+
     /**
      * Hapus realisasi pengambilan obat yang salah input (hanya realisasi
      * manual terbaru — lihat KepatuhanService::hapusRealisasi).
      */
-    public function hapusRealisasi(PasienPrb $pasien, string $riwayat)
+    private function hapusRealisasiSatu(PasienPrb $pasien, string $riwayat)
     {
         $sebelum = AuditLogService::snapshotPasien($pasien);
         $hasil   = $this->kepatuhanService->hapusRealisasi($pasien, $riwayat);
@@ -1161,7 +1316,7 @@ class PasienPrbController extends Controller
      * Jika baru:
      *   → simpan histori + update master dalam satu transaksi.
      */
-    public function updateRealisasi(
+    private function updateRealisasiSatu(
         Request $request,
         PasienPrb $pasien
     ) {
@@ -1202,7 +1357,7 @@ class PasienPrbController extends Controller
      *
      * Edit manual tanggal jadwal berikutnya.
      */
-    public function updateJadwal(
+    private function updateJadwalSatu(
         Request $request,
         PasienPrb $pasien
     ) {
@@ -1245,7 +1400,7 @@ class PasienPrbController extends Controller
      * Oleh karena itu, setiap perubahan terakhir_ambil
      * HARUS diikuti recalculate jadwal dan jenis PRB.
      */
-    public function updateTerakhirAmbil(
+    private function updateTerakhirAmbilSatu(
         Request $request,
         PasienPrb $pasien
     ) {
@@ -1298,7 +1453,7 @@ class PasienPrbController extends Controller
      * UPDATE STATUS
      * =========================================================
      */
-    public function updateStatus(
+    private function updateStatusSatu(
         Request $request,
         PasienPrb $pasien
     ) {
@@ -2226,6 +2381,9 @@ class PasienPrbController extends Controller
                         'Kategori Tindak Lanjut' => $tindakLanjutTerakhir?->kategori ?: '-',
                         'Hasil Tindak Lanjut' => $tindakLanjutTerakhir?->tindakan ?: '-',
                         'Catatan' => $tindakLanjutTerakhir?->catatan ?: '-',
+                        // untuk menggabung baris (lihat di bawah); tidak ikut diekspor
+                        '_kelompok' => PasienPrb::kunciKelompok($pasien),
+                        '_urut' => PasienPrb::urutanDiagnosis($pasien),
                     ];
 
                     if ($denganHistori) {
@@ -2244,6 +2402,14 @@ class PasienPrbController extends Controller
             $cocok = self::nilaiEarlyWarning($filterEarlyWarning);
             $data  = $data->filter(fn($p) => in_array($p['Early Warning'], $cocok, true))->values();
         }
+
+        // Ekspor ikut tampilan: diagnosis satu pasien dengan tanggal mulai & ambil
+        // yang sama menjadi satu baris (histori sama, diambil sekali).
+        $data = $data->groupBy('_kelompok')->map(function ($g) {
+            $baris = $g->first();
+            $baris['Diagnosis'] = $g->sortBy('_urut')->pluck('Diagnosis')->unique()->implode(', ');
+            return collect($baris)->except(['_kelompok', '_urut'])->all();
+        })->values();
 
         if (!$denganHistori) {
             return response()->json(

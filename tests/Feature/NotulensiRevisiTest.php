@@ -88,8 +88,10 @@ class NotulensiRevisiTest extends TestCase
         $buat('PRB-1', 'N1', 'Diabetes Melitus');
         $buat('PRB-2', 'N2', 'Asma');
 
+        // N1: dua diagnosis, tanggal sama → satu baris berisi keduanya
         $this->get(route('pasien.index', ['filter_jumlah_diagnosis' => 'lebih_dari_satu']))
-            ->assertInertia(fn (Assert $p) => $p->has('pasienList', 2)->where('pasienList.0.noka', 'N1')->where('pasienList.1.noka', 'N1'));
+            ->assertInertia(fn (Assert $p) => $p->has('pasienList', 1)->where('pasienList.0.noka', 'N1')
+                ->where('pasienList.0.diagnosis_prb', ['Diabetes Melitus', 'Hipertensi']));
         $this->get(route('pasien.index', ['filter_jumlah_diagnosis' => 'satu']))
             ->assertInertia(fn (Assert $p) => $p->has('pasienList', 1)->where('pasienList.0.noka', 'N2'));
     }

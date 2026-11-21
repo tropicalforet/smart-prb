@@ -17,9 +17,23 @@ class TindakLanjutController extends Controller
     ) {}
 
     /**
-     * Catat tindak lanjut satu pasien.
+     * Catat tindak lanjut. Baris gabungan (beberapa diagnosis dengan tanggal
+     * sama) → dicatat untuk semua diagnosisnya, termasuk realisasinya, agar
+     * tanggal tetap sama. Pesan dari data yang dibuka.
      */
     public function store(Request $request, PasienPrb $pasien)
+    {
+        $lain = $pasien->kelompok()->reject(fn (PasienPrb $p) => $p->id === $pasien->id);
+        $hasil = $this->storeSatu($request, $pasien);
+        foreach ($lain as $p) {
+            $this->storeSatu($request, $p);
+        }
+
+        return $hasil;
+    }
+
+    /** Catat tindak lanjut satu data PRB. */
+    private function storeSatu(Request $request, PasienPrb $pasien)
     {
         $validated = $request->validate([
             'petugas'           => 'nullable|string|max:255',

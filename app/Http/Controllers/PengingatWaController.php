@@ -17,6 +17,16 @@ class PengingatWaController extends Controller
      */
     public function store(Request $request, PasienPrb $pasien)
     {
+        // Baris gabungan → dicatat untuk semua diagnosisnya
+        foreach ($pasien->kelompok()->reject(fn (PasienPrb $p) => $p->id === $pasien->id) as $p) {
+            $this->storeSatu($request, $p);
+        }
+
+        return $this->storeSatu($request, $pasien);
+    }
+
+    private function storeSatu(Request $request, PasienPrb $pasien)
+    {
         $validated = $request->validate([
             'tahap'         => 'nullable|string|max:100',
             'jadwal_target' => 'nullable|date',

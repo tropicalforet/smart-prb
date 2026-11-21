@@ -100,6 +100,42 @@ class KepatuhanService
         return $bulanMulai < $bulanAcuan ? 'Lama' : 'Baru';
     }
 
+    /**
+     * Status satu PASIEN dari status tiap diagnosisnya — pasien dengan beberapa
+     * diagnosis dihitung satu kali. Yang perlu perhatian didahulukan:
+     * Tidak Teratur, lalu Patuh, lalu yang belum dapat dinilai.
+     */
+    public const URUTAN_STATUS_PASIEN = [
+        'Tidak Teratur', 'Patuh', 'Dalam Toleransi', 'Belum Jatuh Tempo',
+        'Belum Ada Jadwal', 'Tidak Ada Transaksi', 'Pasif', 'Meninggal',
+    ];
+
+    public static function statusPasien(iterable $status): ?string
+    {
+        $daftar = collect($status)->filter()->values();
+        foreach (self::URUTAN_STATUS_PASIEN as $s) {
+            if ($daftar->contains($s)) return $s;
+        }
+
+        return $daftar->first();
+    }
+
+    /**
+     * Kelompokkan hasil per data PRB menjadi per PASIEN (NOKA).
+     *
+     * @param  iterable<array{noka: ?string, status: ?string}>  $entri  (+ kolom lain, mis. fktp)
+     * @return \Illuminate\Support\Collection<string, array> entri pertama tiap pasien, status = statusPasien()
+     */
+    public static function perPasien(iterable $entri): \Illuminate\Support\Collection
+    {
+        $tanpaNoka = 0; // data tanpa NOKA tidak bisa dipastikan sama → dihitung sendiri-sendiri
+        return collect($entri)
+            ->groupBy(function ($e) use (&$tanpaNoka) {
+                return strtoupper(preg_replace('/\s+/', '', (string) ($e['noka'] ?? ''))) ?: 'tanpa-noka#' . $tanpaNoka++;
+            })
+            ->map(fn ($g) => array_merge($g->first(), ['status' => self::statusPasien($g->pluck('status'))]));
+    }
+
     /** Bulan data penelitian (YYYY-MM, urut naik); kosong = semua bulan. */
     public static function periodePenelitian(): array
     {
@@ -1255,12 +1291,14 @@ class KepatuhanService
 
         $semuaPasien = $query->get();
 
-        // Total Pasien = orang (NOKA unik); satu pasien bisa punya beberapa
-        // data PRB (satu per diagnosis). Kepatuhan tetap dinilai per diagnosis.
+        // Semua jumlah = orang (NOKA unik); satu pasien bisa punya beberapa data
+        // PRB (satu per diagnosis) tetapi dihitung satu kali. Kepatuhan dinilai
+        // per diagnosis lalu digabung per pasien (statusPasien), kecuali grafik
+        // per diagnosis yang memang per diagnosis.
         $totalPasien = PasienPrb::jumlahPasienUnik($semuaPasien);
         $pasienAktif = $semuaPasien->where('status', 'Aktif');
         $pasienPasif = $semuaPasien->where('status', 'Pasif');
-        $totalAktif  = $pasienAktif->count();
+        $totalAktif  = PasienPrb::jumlahPasienUnik($pasienAktif);
 
         // ── Langkah 1: Hitung status SEKALI per pasien aktif ──────────────
         // Simpan hasilnya dalam array agar per_diagnosis dan per_fktp
@@ -1279,15 +1317,20 @@ class KepatuhanService
             $status = $k['status'];
 
             $statusMap[$pasien->id] = [
+                'noka'      => $pasien->noka,
                 'status'    => $status,
                 'diagnosis' => is_array($pasien->diagnosis_prb) ? $pasien->diagnosis_prb : [],
                 'fktp'      => $pasien->fktp_asal,
             ];
+        }
 
-            switch ($status) {
+        // Satu pasien = satu status (pasien dengan 3 diagnosis tetap dihitung 1)
+        $statusPerPasien = self::perPasien($statusMap);
+        foreach ($statusPerPasien as $entry) {
+            switch ($entry['status']) {
                 case 'Patuh':             $patuh++;           break;
-                case 'Tidak Teratur':       $tidakPatuh++;      break;
-                case 'Dalam Toleransi':     $dalamToleransi++;  break;
+                case 'Tidak Teratur':     $tidakPatuh++;      break;
+                case 'Dalam Toleransi':   $dalamToleransi++;  break;
                 case 'Belum Jatuh Tempo': $belumJatuhTempo++; break;
             }
         }
@@ -1326,10 +1369,10 @@ class KepatuhanService
         // Urutkan: diagnosis dengan total terbanyak dulu
         usort($perDiagnosis, fn($a, $b) => $b['total'] <=> $a['total']);
 
-        // ── Langkah 3: Aggregate per FKTP ─────────────────────────────────
+        // ── Langkah 3: Aggregate per FKTP (per pasien) ────────────────────
         $fktpMap = []; // 'Puskesmas X' => ['patuh' => ..., 'tidak_patuh' => ...]
 
-        foreach ($statusMap as $entry) {
+        foreach ($statusPerPasien as $entry) {
             $fktp = $entry['fktp'] ?: 'Tanpa FKTP';
             if (!isset($fktpMap[$fktp])) {
                 $fktpMap[$fktp] = ['patuh' => 0, 'tidak_patuh' => 0];
@@ -1358,8 +1401,8 @@ class KepatuhanService
             'total_pasien'      => $totalPasien,
             'total_diagnosis'   => $semuaPasien->count(),
             'total_aktif'       => $totalAktif,
-            'total_pasif'       => $pasienPasif->count(),
-            'total_meninggal'   => $semuaPasien->where('status', 'Meninggal')->count(),
+            'total_pasif'       => PasienPrb::jumlahPasienUnik($pasienPasif),
+            'total_meninggal'   => PasienPrb::jumlahPasienUnik($semuaPasien->where('status', 'Meninggal')),
             'patuh'             => $patuh,
             'tidak_patuh'       => $tidakPatuh,
             'dalam_toleransi'   => $dalamToleransi,
@@ -1431,13 +1474,14 @@ class KepatuhanService
         foreach ($daftarBulan as $periode) {
             $bulan = Carbon::parse($periode . '-01');
 
-            $patuh = 0;
-            $tidakPatuh = 0;
-            foreach ($pasienPerBulan[$periode] ?? [] as $pasien) {
-                $status = $this->tentukanStatusKepatuhanPeriode($pasien, $periode, $evaluasi)['status'];
-                if ($status === 'Patuh')       $patuh++;
-                if ($status === 'Tidak Teratur') $tidakPatuh++;
-            }
+            // Per pasien: beberapa diagnosis satu pasien dihitung satu kali
+            $entri = array_map(fn ($pasien) => [
+                'noka'   => $pasien->noka,
+                'status' => $this->tentukanStatusKepatuhanPeriode($pasien, $periode, $evaluasi)['status'],
+            ], $pasienPerBulan[$periode] ?? []);
+            $perPasien  = self::perPasien($entri);
+            $patuh      = $perPasien->where('status', 'Patuh')->count();
+            $tidakPatuh = $perPasien->where('status', 'Tidak Teratur')->count();
 
             $tren[] = [
                 'periode'     => $periode,
