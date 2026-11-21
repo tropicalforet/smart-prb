@@ -617,10 +617,10 @@ export default function PasienIndex({
                         }}
                         className="overflow-hidden mb-6"
                     >
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-x-3 gap-y-2.5">
                             {/* Status Pasien */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Status Pasien
                                 </label>
 
@@ -634,10 +634,10 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
-                                        Semua Status
+                                        Semua
                                     </option>
 
                                     <option value="Aktif">
@@ -652,7 +652,7 @@ export default function PasienIndex({
 
                             {/* Jenis PRB */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Jenis PRB
                                 </label>
 
@@ -666,10 +666,10 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
-                                        Semua Jenis
+                                        Semua
                                     </option>
                                     <option value="Baru">
                                         PRB Baru
@@ -682,16 +682,16 @@ export default function PasienIndex({
 
                             {/* Jumlah diagnosis per pasien (NOKA) */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Jumlah Diagnosis
                                 </label>
 
                                 <select
                                     value={filters.filter_jumlah_diagnosis || ''}
                                     onChange={(e) => applyFilters({ filter_jumlah_diagnosis: e.target.value })}
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
-                                    <option value="">Semua Pasien</option>
+                                    <option value="">Semua</option>
                                     <option value="lebih_dari_satu">Lebih dari satu diagnosis</option>
                                     <option value="satu">Satu diagnosis</option>
                                 </select>
@@ -699,7 +699,7 @@ export default function PasienIndex({
 
                             {/* Status Kepatuhan */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Status Kepatuhan
                                 </label>
 
@@ -713,10 +713,10 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
-                                        Semua Kepatuhan
+                                        Semua
                                     </option>
 
                                     {statusKepatuhanOptions.map(
@@ -734,7 +734,7 @@ export default function PasienIndex({
 
                             {/* Early Warning */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Early Warning
                                 </label>
 
@@ -748,10 +748,10 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
-                                        Semua Warning
+                                        Semua
                                     </option>
                                     <option value="Jadwal Mendekat">
                                         Jadwal Mendekat
@@ -770,7 +770,7 @@ export default function PasienIndex({
 
                             {/* FKTP Asal */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     FKTP Asal
                                 </label>
 
@@ -784,10 +784,10 @@ export default function PasienIndex({
                                                 e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
                                     <option value="">
-                                        Semua FKTP
+                                        Semua
                                     </option>
 
                                     {fktpOptions.map(
@@ -805,15 +805,15 @@ export default function PasienIndex({
 
                             {/* Diagnosis — ceklis, bisa lebih dari satu */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Diagnosis
                                 </label>
 
                                 <Popover className="relative">
-                                    <PopoverButton className="w-full flex items-center justify-between gap-2 text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white text-left focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500">
+                                    <PopoverButton className="w-full flex items-center justify-between gap-2 text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-left focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500">
                                         <span className="truncate">
                                             {diagnosisTerpilih.length === 0
-                                                ? 'Semua Diagnosis'
+                                                ? 'Semua'
                                                 : diagnosisTerpilih.length === 1
                                                     ? diagnosisTerpilih[0]
                                                     : `${diagnosisTerpilih.length} diagnosis dipilih`}
@@ -852,7 +852,7 @@ export default function PasienIndex({
 
                             {/* Tindak Lanjut — kategori tindak lanjut terakhir */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                                     Tindak Lanjut
                                 </label>
 
@@ -863,9 +863,9 @@ export default function PasienIndex({
                                             filter_tindak_lanjut: e.target.value,
                                         })
                                     }
-                                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-teal-500 focus:border-teal-500"
+                                    className="w-full text-xs border border-slate-300 rounded-lg pl-2.5 pr-7 py-1.5 focus:ring-teal-500 focus:border-teal-500"
                                 >
-                                    <option value="">Semua Tindak Lanjut</option>
+                                    <option value="">Semua</option>
                                     {KATEGORI_TINDAK_LANJUT_OPTIONS.map((k) => (
                                         <option key={k} value={k}>{k}</option>
                                     ))}
@@ -875,11 +875,12 @@ export default function PasienIndex({
                             {/* Tombol Reset */}
                             <div className="flex items-end">
                                 <Button 
-                                    variant="outline" 
-                                    className="w-full text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 h-[42px]" 
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 h-[30px]"
                                     onClick={resetFilters}
                                 >
-                                    <X className="w-4 h-4 mr-2" />
+                                    <X className="w-3.5 h-3.5 mr-1.5" />
                                     Reset Filter
                                 </Button>
                             </div>
