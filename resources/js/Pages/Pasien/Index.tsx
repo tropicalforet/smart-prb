@@ -820,15 +820,14 @@ export default function PasienIndex({
 
                             {/* Tombol Reset */}
                             <div className="flex items-end">
-                                <Button 
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 h-[30px]"
+                                <button
+                                    type="button"
                                     onClick={resetFilters}
+                                    className="w-full h-[30px] inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 hover:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                                 >
                                     <X className="w-3.5 h-3.5 mr-1.5" />
                                     Reset Filter
-                                </Button>
+                                </button>
                             </div>
                         </div>
                     </motion.div>
