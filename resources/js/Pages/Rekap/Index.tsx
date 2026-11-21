@@ -234,8 +234,7 @@ export default function RekapIndex({
                 </div>
                 {rekapFktp.length > 0 && (
                     <p className="px-6 py-3 border-t border-slate-100 text-xs text-slate-500">
-                        Total Pasien dihitung per pasien (NOKA unik). Patuh dan Tidak Teratur dihitung per diagnosis,
-                        karena jadwal obat tiap diagnosis terpisah — pasien dengan dua diagnosis bisa masuk di keduanya.
+                        Total Pasien dihitung per pasien; Patuh dan Tidak Teratur per diagnosis.
                     </p>
                 )}
             </div>

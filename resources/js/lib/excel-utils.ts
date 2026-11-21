@@ -676,7 +676,7 @@ export function validateImportData(
         }
 
         if (!mapped.fktp_asal) {
-            errors.push('FKTP / Faskes Asal wajib diisi (kolom FKTP atau tanda "ADA" di kolom FKTP)');
+            errors.push('FKTP wajib diisi');
         } else {
             // Singkatan apotek ("KPMA", "B SBY") → nama lengkap; hanya 8 FKTP penelitian
             const fktpBaku = bakukanFktp(mapped.fktp_asal);

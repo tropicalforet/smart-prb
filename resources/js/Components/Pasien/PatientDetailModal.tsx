@@ -673,10 +673,7 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                     {hapusRiwayatId === riwayat.id && (
                                                         <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
                                                             <p className="font-semibold">Hapus pengambilan {formatTglHistori(riwayat.tanggal_pengambilan)}?</p>
-                                                            <p className="mt-1">
-                                                                Untuk pengambilan yang salah input atau tercatat ganda. Jadwal ambil berikutnya
-                                                                dihitung ulang dari pengambilan sebelumnya. Penghapusan dicatat di Audit Log.
-                                                            </p>
+                                                            <p className="mt-1">Jadwal berikutnya dihitung ulang.</p>
                                                             <div className="mt-2 flex justify-end gap-2">
                                                                 <button
                                                                     onClick={() => setHapusRiwayatId(null)}

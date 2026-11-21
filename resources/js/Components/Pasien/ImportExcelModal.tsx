@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import { csrfHeaders } from '@/lib/csrf';
-import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, ShieldCheck, Info, TriangleAlert, CalendarDays, Download } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, Info, TriangleAlert, CalendarDays, Download } from 'lucide-react';
 import {
     parseExcelFile, validateImportData, buildImportPayload, kolomBulan, penandaBaris,
     ValidationResult, ParseMeta, downloadImportTemplate, exportToExcel,
@@ -208,11 +208,8 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
         onClose();
     };
 
-    const validCount     = results.filter(r => r.valid).length;
-    const jumlahDigabung = results.reduce((n, r) => n + (r.barisDigabung?.length ?? 0), 0);
-    // Baris Excel yang sel diagnosisnya berisi beberapa diagnosis (dipisah per diagnosis)
-    const barisDipisah = new Set(results.filter(r => r.dipisahDariSel).map(r => `${r.sheet}#${r.row}`)).size;
-    const tambahanDariPisah = results.filter(r => r.dipisahDariSel).length - barisDipisah;
+    // Pasien (NOKA unik) yang siap diimpor — sama dengan "Jumlah pasien di-import" sesudahnya
+    const pasienValid    = jumlahPasienUnik(results.filter(r => r.valid).map(r => r.data.noka));
     const invalidCount   = results.filter(r => !r.valid).length;
     const peringatanCount = results.filter(r => r.valid && r.warnings.length > 0).length;
 
@@ -251,16 +248,8 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                     /* ── Belum pilih file ─────────────────────────────────── */
                     <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-10 bg-slate-50 hover:bg-slate-100 transition-colors">
                         <UploadCloud className="w-12 h-12 text-teal-600 mb-3" />
-                        <h4 className="text-slate-800 font-medium mb-1">Pilih atau letakkan file Excel di sini</h4>
-                        <p className="text-slate-500 text-sm mb-1">Mendukung format .xlsx dan .xls</p>
-                        <p className="text-slate-400 text-xs mb-1">
-                            Sistem membaca <span className="font-medium">semua sheet</span> secara otomatis —
-                            sheet data dideteksi dari struktur header, bukan dari nama atau posisi sheet.
-                        </p>
-                        <p className="text-slate-400 text-xs mb-4">
-                            Mendukung template sistem maupun data apotek per bulan
-                            (kolom <span className="font-medium">MARET / APRIL / MEI</span> berisi tanggal ambil obat).
-                        </p>
+                        <h4 className="text-slate-800 font-medium mb-1">Pilih file Excel</h4>
+                        <p className="text-slate-500 text-sm mb-4">Format .xlsx atau .xls</p>
                         <div className="flex gap-3">
                             <Button variant="outline" onClick={downloadImportTemplate} icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}>
                                 Unduh Template Excel
@@ -309,23 +298,19 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         )}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[
-                                { label: 'Jumlah pasien di-import',                        value: hasil.pasien,               color: 'bg-emerald-50 text-emerald-700' },
-                                { label: 'Jumlah pasien dengan diagnosis lebih dari satu', value: hasil.pasienMultiDiagnosis, color: 'bg-teal-50 text-teal-700' },
-                                { label: 'Duplikat dilewati',                              value: hasil.duplikat,             color: 'bg-slate-100 text-slate-700' },
-                                { label: 'Gagal karena tidak valid',                       value: hasil.gagal,                color: 'bg-rose-50 text-rose-700' },
+                                // `arti` tampil saat kursor diarahkan ke kartu
+                                { label: 'Jumlah pasien di-import',                        value: hasil.pasien,               color: 'bg-emerald-50 text-emerald-700', arti: 'Pasien (NOKA unik) yang tersimpan; beberapa diagnosis dihitung satu pasien' },
+                                { label: 'Jumlah pasien dengan diagnosis lebih dari satu', value: hasil.pasienMultiDiagnosis, color: 'bg-teal-50 text-teal-700',       arti: 'Bagian dari pasien di-import yang punya 2 diagnosis atau lebih' },
+                                { label: 'Duplikat dilewati',                              value: hasil.duplikat,             color: 'bg-slate-100 text-slate-700',   arti: 'Transaksi pengambilan yang sudah ada, tidak disimpan ulang' },
+                                { label: 'Gagal karena tidak valid',                       value: hasil.gagal,                color: 'bg-rose-50 text-rose-700',      arti: 'Baris tidak memenuhi syarat; dicatat di tabel buffer, tidak masuk data pasien' },
                             ].map(c => (
-                                <div key={c.label} className={`${c.color} rounded-xl p-3 text-center`}>
+                                <div key={c.label} title={c.arti} className={`${c.color} rounded-xl p-3 text-center`}>
                                     <div className="text-2xl font-bold">{c.value}</div>
                                     <div className="text-xs font-medium mt-0.5">{c.label}</div>
                                 </div>
                             ))}
                         </div>
-                        <dl className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
-                            <div><dt className="inline font-semibold">Jumlah pasien di-import:</dt> <dd className="inline">pasien (NOKA unik) yang datanya tersimpan dari file ini — pasien dengan beberapa diagnosis dihitung satu kali. Tersimpan {hasil.transaksi} transaksi pengambilan obat.</dd></div>
-                            <div><dt className="inline font-semibold">Diagnosis lebih dari satu:</dt> <dd className="inline">bagian dari pasien di atas yang punya dua diagnosis atau lebih (tampil sebagai beberapa baris di Data Pasien).</dd></div>
-                            <div><dt className="inline font-semibold">Duplikat dilewati:</dt> <dd className="inline">transaksi pengambilan yang sudah ada sebelumnya, tidak disimpan ulang.</dd></div>
-                            <div><dt className="inline font-semibold">Gagal karena tidak valid:</dt> <dd className="inline">baris yang tidak memenuhi syarat (sama dengan jumlah "Tidak Valid" di rincian sebelum impor); dicatat di tabel buffer beserta alasannya, tidak masuk data pasien.</dd></div>
-                        </dl>
+                        <p className="text-xs text-slate-500">{hasil.transaksi} transaksi pengambilan obat tersimpan.</p>
                         <div className="flex justify-end">
                             <Button onClick={handleClose}>Tutup</Button>
                         </div>
@@ -342,11 +327,8 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                 <div>
                                     <div className="font-semibold text-slate-800">{file.name}</div>
                                     <div className="text-xs text-slate-500">
-                                        {results.length} pasien terdeteksi
-                                        {multiSheet
-                                            ? ` dari ${sheetCount} sheet`
-                                            : sheetCount === 1 ? ` — sheet: ${sheetNames[0]}` : ''}
-                                        {' · '}{payload.length} baris transaksi akan dikirim
+                                        Sheet: {sheetNames.join(', ') || '-'}
+                                        {parseMeta && parseMeta.skippedSheets.length > 0 && ` · dilewati: ${parseMeta.skippedSheets.join(', ')}`}
                                     </div>
                                 </div>
                             </div>
@@ -355,35 +337,11 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                             </Button>
                         </div>
 
-                        {/* Info sheet (ParseMeta) */}
-                        {parseMeta && (
-                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 mb-4">
-                                <div className="flex flex-wrap gap-x-6 gap-y-1">
-                                    <span>Sheet ditemukan: <strong>{parseMeta.totalSheets}</strong></span>
-                                    <span>
-                                        Sheet diproses: <strong>{parseMeta.processedSheets.length}</strong>
-                                        {parseMeta.processedSheets.length > 0 && (
-                                            <span className="text-slate-400"> ({parseMeta.processedSheets.join(', ')})</span>
-                                        )}
-                                    </span>
-                                    {parseMeta.skippedSheets.length > 0 && (
-                                        <span>
-                                            Sheet dilewati: <strong>{parseMeta.skippedSheets.length}</strong>
-                                            <span className="text-slate-400"> ({parseMeta.skippedSheets.join(', ')})</span>
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Tahun untuk kolom bulan */}
+                        {/* Tahun untuk kolom bulan (MARET / APRIL / MEI tanpa tahun di judul) */}
                         {adaKolomBulan && (
-                            <div className="flex flex-wrap items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 mb-4">
-                                <CalendarDays className="w-4 h-4 text-amber-600 shrink-0" />
-                                <span>
-                                    File berformat <span className="font-semibold">per bulan</span> — kolom bulan hanya berisi tanggal.
-                                    Tahun untuk kolom bulan tanpa tahun di judulnya (kolom seperti "JANUARI 2027" memakai tahunnya sendiri):
-                                </span>
+                            <label className="flex items-center gap-2 text-xs text-slate-600 mb-4">
+                                <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
+                                Tahun data
                                 <input
                                     type="number"
                                     min={2000}
@@ -391,15 +349,15 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                     value={tahunBulan}
                                     onChange={e => setTahunBulan(Number(e.target.value) || new Date().getFullYear())}
                                     disabled={!!progres}
-                                    className="w-24 rounded-md border-amber-300 text-xs py-1 focus:border-teal-500 focus:ring-teal-500"
+                                    className="w-20 rounded-md border-slate-300 text-xs py-1 focus:border-teal-500 focus:ring-teal-500"
                                 />
-                            </div>
+                            </label>
                         )}
 
                         {/* Ringkasan validasi */}
                         <div className="flex flex-wrap items-center gap-3 mb-4">
                             <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-                                <CheckCircle2 className="w-4 h-4" /> {validCount} Pasien Valid
+                                <CheckCircle2 className="w-4 h-4" /> {pasienValid} Pasien Valid
                             </div>
                             {peringatanCount > 0 && (
                                 <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100">
@@ -419,7 +377,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                         onChange={e => setHanyaPerluDicek(e.target.checked)}
                                         className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                                     />
-                                    Tampilkan hanya yang perlu dicek / tidak valid
+                                    Hanya yang bermasalah
                                 </label>
                             )}
                         </div>
@@ -428,15 +386,13 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         {(alasanTidakValid.length > 0 || alasanPerluDicek.length > 0) && (
                             <div className="border border-slate-200 rounded-lg p-3 mb-4 text-xs">
                                 <div className="flex items-center justify-between gap-2 mb-2">
-                                    <span className="font-semibold text-slate-700">
-                                        Rincian data buffer: {results.length + jumlahDigabung - tambahanDariPisah} baris Excel — {validCount} data valid (per diagnosis){barisDipisah > 0 ? `, ${barisDipisah} baris berisi beberapa diagnosis dipisah` : ''}{jumlahDigabung > 0 ? `, ${jumlahDigabung} baris ganda digabung` : ''}, {invalidCount} tidak memenuhi syarat
-                                    </span>
+                                    <span className="font-semibold text-slate-700">Rincian</span>
                                     <button
                                         type="button"
                                         onClick={unduhRincian}
                                         className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 font-medium"
                                     >
-                                        <Download className="w-3.5 h-3.5" /> Unduh rincian (Excel)
+                                        <Download className="w-3.5 h-3.5" /> Unduh rincian
                                     </button>
                                 </div>
                                 <div className="grid sm:grid-cols-2 gap-3">
@@ -464,26 +420,11 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                             </div>
                         )}
 
-                        {/* Info anti-duplikasi */}
-                        <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-xs text-sky-800 flex items-start gap-2 mb-4">
-                            <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
-                            <div>
-                                <span className="font-semibold">Deteksi otomatis &amp; anti-duplikasi:</span>{' '}
-                                Duplikasi dicek via <span className="font-medium">No. Faktur</span> (UPDATE jika koreksi),
-                                lalu <span className="font-medium">NOKA + tanggal</span> — mengimpor ulang file yang sama aman.
-                                Kolom Nama Pasien <span className="font-medium">disamarkan otomatis</span> (mis. R***a D*i P***i) sebelum dikirim; kolom No. HP <span className="font-medium">diabaikan</span> sesuai ketentuan etik.
-                                Baris <span className="font-medium">Perlu Dicek</span> tetap diimpor; periksa keterangannya.
-                            </div>
-                        </div>
-
                         {/* Peringatan 0 baris */}
                         {results.length === 0 && (
                             <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-4">
                                 <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                                <span>
-                                    Tidak ada baris data yang dapat diproses dari sheet yang terdeteksi.
-                                    Pastikan baris data sudah diisi di bawah baris header.
-                                </span>
+                                <span>Tidak ada baris data di bawah baris judul kolom.</span>
                             </div>
                         )}
 
@@ -501,7 +442,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                             <th className="px-3 py-2 border-b">Diagnosis PRB</th>
                                             <th className="px-3 py-2 border-b whitespace-nowrap">Mulai PRB</th>
                                             <th className="px-3 py-2 border-b">Pengambilan</th>
-                                            <th className="px-3 py-2 border-b">Status Validasi</th>
+                                            <th className="px-3 py-2 border-b">Keterangan</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -549,8 +490,8 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                         {progres && (
                             <div className="mt-4">
                                 <div className="flex justify-between text-xs text-slate-600 mb-1">
-                                    <span>Mengunggah… jangan tutup halaman ini.</span>
-                                    <span>{progres.selesai} / {progres.total} baris</span>
+                                    <span>Mengimpor… jangan tutup halaman ini.</span>
+                                    <span>{Math.round((progres.selesai / progres.total) * 100)}%</span>
                                 </div>
                                 <div className="w-full bg-slate-100 rounded-full h-2">
                                     <div
@@ -569,7 +510,7 @@ export function ImportExcelModal({ isOpen, onClose }: Props) {
                                 disabled={payload.length === 0}
                                 icon={<UploadCloud className="w-4 h-4"/>}
                             >
-                                Import {validCount} Pasien ({payload.length} baris)
+                                Import {pasienValid} Pasien
                             </Button>
                         </div>
                     </div>
