@@ -224,6 +224,14 @@ class AuditLogService
         );
     }
 
+    public function hapusRealisasi(string $id, string $label, string $tanggal, array $perubahan = []): void
+    {
+        $this->catat('realisasi', 'hapus_realisasi',
+            "Menghapus realisasi pengambilan obat {$label} tanggal {$tanggal}",
+            $id, $label, $perubahan
+        );
+    }
+
     public function importExcel(int $baru, int $diperbarui, int $duplikat, int $invalid): void
     {
         $this->catat('import', 'import',

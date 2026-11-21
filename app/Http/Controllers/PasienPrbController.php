@@ -1121,6 +1121,34 @@ class PasienPrbController extends Controller
     }
 
     /**
+     * Hapus realisasi pengambilan obat yang salah input (hanya realisasi
+     * manual terbaru — lihat KepatuhanService::hapusRealisasi).
+     */
+    public function hapusRealisasi(PasienPrb $pasien, string $riwayat)
+    {
+        $sebelum = AuditLogService::snapshotPasien($pasien);
+        $hasil   = $this->kepatuhanService->hapusRealisasi($pasien, $riwayat);
+
+        if (isset($hasil['error'])) {
+            return redirect()->back()->with('info', $hasil['error']);
+        }
+
+        $dihapus = $hasil['riwayat'];
+        $this->auditLogService->hapusRealisasi(
+            $pasien->id,
+            $pasien->identitas(),
+            $dihapus->tanggal_pengambilan->toDateString(),
+            array_merge([
+                ['kolom' => 'Tanggal Pengambilan', 'lama' => $dihapus->tanggal_pengambilan->format('d/m/Y'), 'baru' => null],
+                ['kolom' => 'Status Kepatuhan',    'lama' => $dihapus->status_kepatuhan, 'baru' => null],
+                ['kolom' => 'No. Faktur',          'lama' => $dihapus->no_faktur, 'baru' => null],
+            ], AuditLogService::selisih($sebelum, AuditLogService::snapshotPasien($pasien->fresh())))
+        );
+
+        return redirect()->back()->with('success', 'Pengambilan obat ' . $dihapus->tanggal_pengambilan->format('d/m/Y') . ' dihapus.');
+    }
+
+    /**
      * =========================================================
      * UPDATE REALISASI (QuickRealisasi / Siklus Baru)
      * =========================================================

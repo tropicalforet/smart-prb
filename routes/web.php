@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
     // Pasien aksi tambahan
     Route::post('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasi'])->name('pasien.realisasi');
     Route::put('pasien/{pasien}/realisasi', [PasienPrbController::class, 'updateRealisasiEdit'])->name('pasien.realisasi.edit');
+    Route::delete('pasien/{pasien}/realisasi/{riwayat}', [PasienPrbController::class, 'hapusRealisasi'])->name('pasien.realisasi.hapus');
     Route::put('pasien/{pasien}/jadwal', [PasienPrbController::class, 'updateJadwal'])->name('pasien.jadwal.update');
     Route::put('pasien/{pasien}/terakhir-ambil', [PasienPrbController::class, 'updateTerakhirAmbil'])->name('pasien.terakhir-ambil.update');
     Route::post('pasien/{pasien}/status', [PasienPrbController::class, 'updateStatus'])->name('pasien.status');

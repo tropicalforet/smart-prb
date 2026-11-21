@@ -1138,6 +1138,84 @@ class KepatuhanService
 
     /**
      * =========================================================
+     * HAPUS REALISASI PENGAMBILAN OBAT (SALAH INPUT)
+     * =========================================================
+     *
+     * Untuk realisasi yang tercatat ganda/keliru (mis. tindak lanjut
+     * "Sudah mengambil obat" diinput dua kali). Aturan:
+     *   - Hanya realisasi manual (no_faktur REALISASI-…); data dari impor
+     *     Excel dikoreksi lewat file-nya.
+     *   - Hanya pengambilan yang TERAKHIR DICATAT, agar jadwal & status
+     *     siklus sesudahnya tidak ikut salah. Yang lebih lama dihapus
+     *     berurutan dari yang terakhir dicatat.
+     * Sesudah dihapus, master disinkronkan seperti editRealisasi():
+     *   - Ada pengambilan sebelumnya → terakhir ambil = tanggal itu, jadwal
+     *     berikutnya = tanggal itu + jatah obat.
+     *   - Tidak ada → terakhir ambil kosong, jadwal kembali ke jadwal yang
+     *     dipenuhi realisasi yang dihapus.
+     *
+     * @return array{berhasil?: bool, riwayat?: RiwayatPengambilanObat, error?: string}
+     */
+    public function hapusRealisasi(PasienPrb $pasien, string $riwayatId): array
+    {
+        $riwayat = RiwayatPengambilanObat::where('id', $riwayatId)
+            ->where('pasien_prb_id', $pasien->id)
+            ->first();
+
+        if (!$riwayat) {
+            return ['error' => 'Riwayat tidak ditemukan atau bukan milik pasien ini.'];
+        }
+        if (!str_starts_with((string) $riwayat->no_faktur, 'REALISASI-')) {
+            return ['error' => 'Pengambilan dari impor Excel tidak dapat dihapus di sini — perbaiki lewat file Excel-nya.'];
+        }
+
+        // "Terbaru" = yang terakhir DICATAT (bukan tanggal terbesar): jadwal
+        // tiap realisasi dihitung dari realisasi yang dicatat sebelumnya, jadi
+        // hanya catatan terakhir yang aman dihapus (UUID v7 urut waktu = penentu seri).
+        $terbaru = RiwayatPengambilanObat::where('pasien_prb_id', $pasien->id)
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->first();
+        if ($terbaru->id !== $riwayat->id) {
+            return ['error' => 'Hanya pengambilan yang terakhir dicatat yang dapat dihapus. Hapus dulu yang dicatat sesudahnya.'];
+        }
+
+        DB::transaction(function () use ($pasien, $riwayat) {
+            $riwayat->delete();
+
+            $sebelumnya = RiwayatPengambilanObat::where('pasien_prb_id', $pasien->id)
+                ->orderByDesc('tanggal_pengambilan')
+                ->first();
+
+            if ($sebelumnya) {
+                $tanggal  = Carbon::parse($sebelumnya->tanggal_pengambilan)->startOfDay();
+                $jenisPrb = self::tentukanJenisPrb(
+                    $pasien->tanggal_mulai_prb?->toDateString(),
+                    $tanggal->toDateString(),
+                    self::tanggalAmbilPertama($pasien, $tanggal->toDateString())
+                );
+                $jatah = $jenisPrb === 'Baru' ? self::JATAH_PRB_BARU : self::JATAH_PRB_LAMA;
+
+                $pasien->update([
+                    'tanggal_pengambilan_terakhir' => $tanggal->toDateString(),
+                    'tanggal_jadwal_berikutnya'    => $this->hitungJadwalBerikutnya($tanggal, $jatah)->toDateString(),
+                    'tanggal_realisasi'            => null,
+                    'jenis_prb'                    => $jenisPrb,
+                    'jatah_obat'                   => $jatah,
+                ]);
+            } else {
+                $pasien->update([
+                    'tanggal_pengambilan_terakhir' => null,
+                    'tanggal_jadwal_berikutnya'    => $riwayat->jadwal_target?->toDateString(),
+                    'tanggal_realisasi'            => null,
+                ]);
+            }
+        });
+
+        return ['berhasil' => true, 'riwayat' => $riwayat];
+    }
+
+    /**
+     * =========================================================
      * HITUNG STATISTIK DASHBOARD
      * =========================================================
      *

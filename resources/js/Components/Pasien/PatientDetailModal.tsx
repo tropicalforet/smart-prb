@@ -6,7 +6,7 @@ import { Button } from '../ui/Button';
 import { router } from '@inertiajs/react';
 import {
     User, IdCard, FileText, Activity, Calendar,
-    History, MessageSquarePlus, Stethoscope, Save, Pencil, Phone, Send
+    History, MessageSquarePlus, Stethoscope, Save, Pencil, Phone, Send, Trash2
 } from 'lucide-react';
 import { pesanPengingat, tahapPengingat, tautanWhatsapp, formatNoWhatsapp, LABEL_TAHAP } from '@/lib/pengingat-wa';
 import { samarkanNama } from '@/lib/samaran';
@@ -82,6 +82,22 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
     const [editingRiwayatId, setEditingRiwayatId] = useState<string | null>(null);
     const [editingRiwayatTanggal, setEditingRiwayatTanggal] = useState('');
     const [savingRiwayat, setSavingRiwayat] = useState(false);
+
+    // Hapus pengambilan terbaru yang salah input
+    const [hapusRiwayatId, setHapusRiwayatId] = useState<string | null>(null);
+    const [menghapusRiwayat, setMenghapusRiwayat] = useState(false);
+    const handleHapusRiwayat = (riwayatId: string) => {
+        if (!pasienId) return;
+        setMenghapusRiwayat(true);
+        router.delete(`/pasien/${pasienId}/realisasi/${riwayatId}`, {
+            preserveScroll: true,
+            onFinish: () => {
+                setMenghapusRiwayat(false);
+                setHapusRiwayatId(null);
+                refreshPasien();
+            },
+        });
+    };
 
     // Helper: refresh data pasien setelah perubahan
     const refreshPasien = () => {
@@ -551,7 +567,12 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                 seen.add(key);
                                                 return true;
                                             });
+                                            // Yang terakhir DICATAT (bukan tanggal terbesar) — sama dengan server
+                                            const terakhirDicatat = [...unique].sort((a, b) =>
+                                                `${b.created_at ?? ''}${b.id}`.localeCompare(`${a.created_at ?? ''}${a.id}`))[0]?.id;
                                              return unique.map((riwayat) => {
+                                                // Hanya realisasi manual yang terakhir dicatat yang bisa dihapus (salah input)
+                                                const bisaDihapus = riwayat.id === terakhirDicatat && !!riwayat.no_faktur?.startsWith('REALISASI-');
                                                 const selisih = riwayat.selisih_hari ?? 0;
 
                                                 // selisih_hari: positif = terlambat, negatif = lebih awal, 0 = tepat waktu
@@ -618,6 +639,16 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                                                                     </button>
                                                                 )}
+                                                                {bisaDihapus && (
+                                                                    <button
+                                                                        onClick={() => setHapusRiwayatId(riwayat.id)}
+                                                                        className="text-slate-400 hover:text-rose-600 transition-colors"
+                                                                        title="Hapus pengambilan ini (salah input)"
+                                                                        aria-label="Hapus pengambilan ini"
+                                                                    >
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         )}
                                                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badgeBg} shrink-0`}>
@@ -639,6 +670,31 @@ export function PatientDetailModal({ pasienId, isOpen, onClose, tanggalEvaluasi,
                                                             {selisihText}
                                                         </div>
                                                     </div>
+                                                    {hapusRiwayatId === riwayat.id && (
+                                                        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                                                            <p className="font-semibold">Hapus pengambilan {formatTglHistori(riwayat.tanggal_pengambilan)}?</p>
+                                                            <p className="mt-1">
+                                                                Untuk pengambilan yang salah input atau tercatat ganda. Jadwal ambil berikutnya
+                                                                dihitung ulang dari pengambilan sebelumnya. Penghapusan dicatat di Audit Log.
+                                                            </p>
+                                                            <div className="mt-2 flex justify-end gap-2">
+                                                                <button
+                                                                    onClick={() => setHapusRiwayatId(null)}
+                                                                    disabled={menghapusRiwayat}
+                                                                    className="px-3 py-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                                                                >
+                                                                    Batal
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleHapusRiwayat(riwayat.id)}
+                                                                    disabled={menghapusRiwayat}
+                                                                    className="px-3 py-1 rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+                                                                >
+                                                                    {menghapusRiwayat ? 'Menghapus…' : 'Ya, hapus'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                                 );

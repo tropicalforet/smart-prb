@@ -67,6 +67,7 @@ const AKSI_COLORS: Record<string, string> = {
     ubah_status:         'bg-orange-50 text-orange-700',
     catat_realisasi:     'bg-teal-50 text-teal-700',
     edit_realisasi:      'bg-cyan-50 text-cyan-700',
+    hapus_realisasi:     'bg-rose-50 text-rose-700',
     import:              'bg-purple-50 text-purple-700',
     hapus_massal:        'bg-rose-50 text-rose-700',
     catat_tindak_lanjut: 'bg-blue-50 text-blue-700',

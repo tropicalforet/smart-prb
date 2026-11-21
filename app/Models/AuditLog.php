@@ -60,6 +60,7 @@ class AuditLog extends Model
         'ubah_status'        => 'Ubah Status',
         'catat_realisasi'    => 'Catat Realisasi',
         'edit_realisasi'     => 'Edit Realisasi',
+        'hapus_realisasi'    => 'Hapus Realisasi',
         'import'             => 'Import',
         'hapus_massal'       => 'Hapus Massal',
         'catat_tindak_lanjut'=> 'Catat Tindak Lanjut',
